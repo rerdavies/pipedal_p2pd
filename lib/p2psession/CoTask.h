@@ -11,9 +11,50 @@
 #include "Log.h"
 #include "Fifo.h"
 #include <functional>
+#include <condition_variable>
+#include <list>
 
 namespace p2psession
 {
+
+    // forward declarations.
+    template <typename... Dummy>
+    struct Task;
+    template <typename T>
+    struct Task<T>;
+    template <>
+    struct Task<>;
+
+
+
+    // --- Exceptions ---
+
+    class CoException
+    {
+    public:
+        CoException() {}
+        virtual const char *what() { return "CoException"; }
+    };
+    class CoCancelledException : public CoException
+    {
+    public:
+        CoCancelledException() {}
+
+        virtual const char *what() const noexcept
+        {
+            return "Cancelled.";
+        }
+    };
+    class CoTimedOutException : public CoException
+    {
+    public:
+        CoTimedOutException() {}
+
+        virtual const char *what() const noexcept
+        {
+            return "Cancelled.";
+        }
+    };
 
     template <typename T, typename RETURN_TYPE>
     concept Awaitable = requires(T a, std::coroutine_handle<> h)
@@ -33,14 +74,15 @@ namespace p2psession
     class CoTaskSchedulerPool;
     class CoTaskSchedulerThread;
 
-
     // CoDispatcher
     class CoDispatcher
     {
     public:
-        using TimeMs = int64_t;
+        using TimeMs = std::chrono::milliseconds;
 
     private:
+        static CoDispatcher *CreateMainDispatcher();
+
         CoDispatcher();
         CoDispatcher(CoDispatcher *pForegroundDispatcher, CoTaskSchedulerPool *pSchedulerPool);
         ~CoDispatcher();
@@ -55,12 +97,24 @@ namespace p2psession
         void Post(std::coroutine_handle<> handle);
         void PostBackground(std::coroutine_handle<> handle);
         void PostDelayed(TimeMs delay, const std::coroutine_handle<> &handle);
+        uint64_t PostDelayedFunction(TimeMs delay, std::function<void(void)> fn);
+        bool CancelDelayedFunction(uint64_t timerHandle);
+
+
+        bool GetNextTimer(CoDispatcher::TimeMs *pResult) const;
+        void SleepFor(TimeMs delay);
+        void SleepUntil(TimeMs time);
 
         bool IsDone() const;
 
         bool PumpMessages();
+        bool PumpMessages(bool waitForTimers);
 
-        void PumpUntilDone();
+        void PumpUntilIdle();
+
+        void MessageLoop();
+
+        void Quit() { this->quit = true;}
 
         void SetThreadPoolSize(size_t threads);
 
@@ -77,6 +131,7 @@ namespace p2psession
         }
 
     public:
+        bool PumpTimerMessages(TimeMs time);
         // Test Instrumetnation
         class Instrumentation
         {
@@ -85,10 +140,23 @@ namespace p2psession
             static size_t GetNumberOfDeadThreads();
         };
 
+        void Start(std::unique_ptr<Task<>> task);
+        void StartThread(std::unique_ptr<Task<>> task);
+
     private:
+        std::list<std::unique_ptr<Task<>>> coroutineThreads;        
+        void ScavengeTasks();
+        bool inMessageLoop = false;
+        bool quit = false;
+        void PumpMessageNotifyOne();
+        void PumpMessageWaitOne();
+        uint64_t nextTimerHandle = 0;
         std::shared_ptr<ILog> log = std::make_shared<ConsoleLog>();
         friend class CoTaskSchedulerPool;
         friend class CoTaskSchedulerThread;
+
+        std::mutex pumpMessageMutex;
+        std::condition_variable pumpMessageConditionVariable;
 
         std::mutex schedulerMutex;
         static std::mutex creationMutex;
@@ -97,27 +165,54 @@ namespace p2psession
         CoDispatcher *pForegroundDispatcher;
         CoTaskSchedulerPool *pSchedulerPool;
 
-        struct TimerEntry
+        struct CoroutineTimerEntry
         {
             TimeMs time;
             std::coroutine_handle<> handle;
+        };
+        struct TimerFunctionEntry
+        {
+            TimeMs time;
+            std::function<void(void)> fn;
+            uint64_t timerHandle;
         };
 
         struct TeLess
         {
             bool
-            operator()(const struct TimerEntry &__x, const struct TimerEntry &__y) const
+            operator()(const struct CoroutineTimerEntry &__x, const struct CoroutineTimerEntry &__y) const
             {
                 return __x.time > __y.time;
             }
         };
-        std::priority_queue<TimerEntry, std::vector<TimerEntry>, TeLess> timerQueue;
+
+
+
+        std::priority_queue<CoroutineTimerEntry, std::vector<CoroutineTimerEntry>, TeLess> coroutineTimerQueue;
+
+        struct TeFnLess
+        {
+            bool
+            operator()(const struct TimerFunctionEntry &__x, const struct TimerFunctionEntry &__y) const
+            {
+                return __x.time > __y.time;
+            }
+        };
+        std::mutex delayedFunctionMutex;
+
+        // Order N^+N insertion+delete. Priority queue is N log(N) insert, but still N^2+N delete. 
+        // The priority isn't really faster, and rebalancing after erase() is awkwardly difficult.
+
+        std::list<TimerFunctionEntry> functionTimerQueue;
+
         static constexpr size_t DEFAULT_BUFFER_SIZE = 1024;
         Fifo<std::coroutine_handle<>> queue;
     };
 
     template <typename... Dummy>
     struct Task;
+    template <typename T>
+    struct Task<T>;
 
     template <typename T>
     struct Task<T>
@@ -152,7 +247,7 @@ namespace p2psession
 
             // The coroutine is about to complete (via co_return or reaching the end of the coroutine body).
             // The awaiter returned here defines what happens next
-            auto final_suspend() const
+            auto final_suspend() const noexcept
             {
                 struct awaiter
                 {
@@ -198,7 +293,7 @@ namespace p2psession
             return handle.done();
         }
 
-        T await_resume() const 
+        T await_resume() const
         {
             auto promise = handle.promise();
             if (promise.unhandledException)
@@ -216,8 +311,6 @@ namespace p2psession
             // the final_suspend awaiter on the promise_type above for where this gets used
             handle.promise().precursor = coroutine;
         }
-
-
 
         T GetResult();
 
@@ -238,9 +331,9 @@ namespace p2psession
 
             // Invoked when we first enter a coroutine. We initialize the precursor handle
             // with a resume point from where the task is ultimately suspended
-            Task<> get_return_object() noexcept
+            std::coroutine_handle<promise_type> get_return_object() noexcept
             {
-                return Task<>{std::coroutine_handle<promise_type>::from_promise(*this)};
+                return std::coroutine_handle<promise_type>::from_promise(*this);
             }
 
             // When the caller enters the coroutine, we have the option to suspend immediately.
@@ -255,7 +348,7 @@ namespace p2psession
 
             // The coroutine is about to complete (via co_return or reaching the end of the coroutine body).
             // The awaiter returned here defines what happens next
-            auto final_suspend() const 
+            auto final_suspend() const noexcept
             {
                 struct awaiter
                 {
@@ -292,18 +385,20 @@ namespace p2psession
 
         bool await_ready() const noexcept
         {
-            // No need to suspend if this task has no outstanding work
+            // No need to suspend if this task has no outstanding wiork
             return handle.done();
         }
 
-        void await_resume() const noexcept
+        void await_resume() const
         {
             auto promise = handle.promise();
             if (promise.unhandledException)
             {
-                try {
+                try
+                {
                     std::rethrow_exception(promise.unhandledException);
-                } catch (std::exception &e)
+                }
+                catch (std::exception &e)
                 {
                     std::cout << "Got it " << std::endl;
                 }
@@ -322,7 +417,7 @@ namespace p2psession
         {
             while (!handle.done())
             {
-                CoDispatcher::CurrentDispatcher().PumpMessages();
+                CoDispatcher::CurrentDispatcher().PumpMessages(true);
             }
             try
             {
@@ -339,7 +434,14 @@ namespace p2psession
 
         // This handle is assigned to when the coroutine itself is suspended (see await_suspend above)
         std::coroutine_handle<promise_type> handle;
+
+        // To satisfy VS code. Unsure if this is correct in newer C++20 standards.
+        Task(std::coroutine_handle<promise_type> handle)
+        {
+            this->handle = handle;
+        }
     };
+
     //***************************************************************
     inline auto CoDelay(CoDispatcher::TimeMs delayMs) noexcept
     {
@@ -401,21 +503,22 @@ namespace p2psession
     }
 
     /**************************/
-
+    
     inline CoDispatcher &CoDispatcher::CurrentDispatcher()
     {
         CoDispatcher *pResult = pInstance;
         if (pResult == nullptr)
-            pResult = pInstance = new CoDispatcher();
+            pResult = pInstance = CoDispatcher::CreateMainDispatcher();
         return *pResult;
     }
+
 
     template <typename T>
     T Task<T>::GetResult()
     {
         while (!handle.done())
         {
-            CoDispatcher::CurrentDispatcher().PumpMessages();
+            CoDispatcher::CurrentDispatcher().PumpMessages(true);
         }
         try
         {
@@ -429,7 +532,5 @@ namespace p2psession
             throw;
         }
     }
-
-
 
 } // namespace

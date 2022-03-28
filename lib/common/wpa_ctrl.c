@@ -38,7 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define INCLUDES_H
 
 /* Include possible build time configuration before including anything else */
-#include "build_config.h"
+//#include "build_config.h"
 
 #include <stdlib.h>
 #include <stddef.h>

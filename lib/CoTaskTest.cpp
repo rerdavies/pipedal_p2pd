@@ -27,6 +27,7 @@ void assert(bool condition, const std::string &message)
 void terminate(const std::exception &e)
 {
     cout << "ERROR: " << e.what() << endl;
+    cout.flush();
     std::terminate();    
 }
 
@@ -35,7 +36,7 @@ void terminate(const std::exception &e)
 Task<int> DelayTask2(int instance)
 {
     cout << "    Enter Task2(instance)" << endl;
-    co_await CoDelay(1000);
+    co_await CoDelay(1000ms);
     cout << "Task2 Delay complete" << endl;
     cout << "    Exit Task2(instance)" << endl;
     co_return 1;
@@ -48,7 +49,7 @@ Task<int> DelayTask1()
 
     cout << "Enter Task1" << endl;
 
-    co_await CoDelay(1000);
+    co_await CoDelay(1000ms);
     ++checkPoints;
 
     cout << "Task1 Delay complete" << endl;
@@ -59,7 +60,7 @@ Task<int> DelayTask1()
     cout << "Exit Task1" << endl;
 
     auto elapsed = CoDispatcher::Now() - startMs;
-    assert(elapsed >= 3000);
+    assert(elapsed.count() >= 3000);
     assert(checkPoints == 4);
     co_return checkPoints;
 }
@@ -105,6 +106,8 @@ Task<int> BackgroundTask1()
     }
     catch (const std::exception &e)
     {
+        cout << "Error: " << e.what() << endl;
+        cout.flush();
         terminate(e);
     }
 }
@@ -114,12 +117,12 @@ void BackgroundTest()
     cout << "--- BackgroundTest " << endl;
     Task<int> task = BackgroundTask1();
 
-    CoDispatcher::CurrentDispatcher().PumpUntilDone();
+    CoDispatcher::CurrentDispatcher().PumpUntilIdle();
 
     CoDispatcher::DestroyDispatcher();
     cout << "--- BackgroundTest  Done" << endl;
 
-    CoDispatcher::CurrentDispatcher().PumpUntilDone();
+    CoDispatcher::CurrentDispatcher().PumpUntilIdle();
     CoDispatcher::DestroyDispatcher(); // check for leasks
 }
 
@@ -136,12 +139,12 @@ void BackgroundNestedTest()
     cout << "--- BackgroundNestedTest " << endl;
     Task<int> task = BackgroundNested();
 
-    CoDispatcher::CurrentDispatcher().PumpUntilDone();
+    CoDispatcher::CurrentDispatcher().PumpUntilIdle();
 
     CoDispatcher::DestroyDispatcher();
     cout << "--- BackgroundNestedTestDone" << endl;
 
-    CoDispatcher::CurrentDispatcher().PumpUntilDone();
+    CoDispatcher::CurrentDispatcher().PumpUntilIdle();
     CoDispatcher::DestroyDispatcher(); // check for leasks
 }
 /***************************/
@@ -173,6 +176,8 @@ Task<int> SwitchOnReturn()
     }
     catch (const exception &e)
     {
+        e << "Error: " << e.what() << endl;
+        cout.flush();
         terminate(e);
     }
 }
@@ -215,7 +220,7 @@ void TestThreadPoolSizing()
 
 Task<> VoidTask1()
 {
-    co_await CoDelay(100);
+    co_await CoDelay(100ms);
 }
 
 Task<> VoidTask2()
@@ -246,7 +251,7 @@ void VoidTest()
 
 Task<> CatchTest1()
 {
-    co_await CoDelay(200);
+    co_await CoDelay(200ms);
     throw std::logic_error("Expected exception"); 
     co_return;
 }

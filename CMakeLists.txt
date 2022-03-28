@@ -7,15 +7,18 @@ set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON")
 
 project(p2psession VERSION 0.1.0 DESCRIPTION "P2P Session Manager for wpa_supplicant")
 
+
 include(CTest)
 enable_testing()
 
 set (CMAKE_CXX_STANDARD 20)
+add_compile_options("-fcoroutines")
 
 
 
 # Include sub-projects.
 add_subdirectory("lib")
+add_subdirectory("wpap2pd")
 
 
 #set(CPACK_GENERATOR "DEB")

@@ -6,42 +6,42 @@
 #include <functional>
 #include "WpaEvent.h"
 #include "WpaMessages.h"
-#incldue "CoTask.h"
+#include "CoTask.h"
+#include "Log.h"
+#include <memory>
+#include "MessageAwaiter.h"
 
 struct wpa_ctrl;
 
 namespace p2psession
 {
 
-    enum class LogLevel
-    {
-        Debug,
-        Information,
-        Warning,
-        Error
-    };
-
     class SessionManager
     {
+        friend class MessageAwaiter;
+
     public:
         SessionManager();
         virtual ~SessionManager();
 
-        using LogCallback = void(LogLevel logLevel, const std::string_view &message);
-        void SetLogCallback(std::function<LogCallback> callback);
+        void SetLogLevel(LogLevel level) { log->SetLogLevel(level); }
+        LogLevel GetLogLevel() const { return log->GetLogLevel(); }
+        void SetLog(std::shared_ptr<ILog> log);
+
 
         void Open(const std::string &path);
-        void Close();
 
-        LogLevel GetLogLevel() const { return logLevel; }
-        void SetLogLevel(LogLevel logLevel) { this->logLevel = logLevel; }
+        void Run();
+
+        void Close();
 
         // Task methods.
         using ListenerHandle = uint64_t;
 
-        Task<WpaEvent &> WaitForMessage(WpaEventMessage message, int64_t timeoutMs = -1);
-        Task<WpaEvent &> WaitForMessages(const std::vector<WpaEventMessage> &messages, int64_t timeoutMs = -1);
-        void StartTask(Task<> &task);
+        // WpaEvent& event = co_wait CoWaitForMessage(...)
+        MessageAwaiter CoWaitForMessage(WpaEventMessage message, int64_t timeoutMs = -1);
+        // WpaEvent& event = co_wait CoWaitForMessage(...)
+        MessageAwaiter CoWaitForMessages(const std::vector<WpaEventMessage> &messages, int64_t timeoutMs = -1);
 
         // Listener-based event listening.
 
@@ -53,23 +53,20 @@ namespace p2psession
     private:
         WpaEvent wpaEvent;
 
-        LogLevel logLevel = LogLevel::Information;
+        void PostMessageAwaiter(
+            MessageAwaiter *pAwaiter);
 
-        std::function<LogCallback> logCallback;
+        std::vector<MessageAwaiter *> messageAwaiters;
 
-        void Log(LogLevel logLevel, const std::string_view &message);
+        std::shared_ptr<ILog> log;
 
-        void LogDebug(const std::string_view &message);
         void LogDebug(const std::string_view &tag, const std::string_view &message);
-
-        void LogInfo(const std::string_view &message);
         void LogInfo(const std::string_view &tag, const std::string_view &message);
-        void LogWarning(const std::string_view &message);
         void LogWarning(const std::string_view &tag, const std::string_view &message);
-        void LogError(const std::string_view &message);
         void LogError(const std::string_view &tag, const std::string_view &message);
+        [[noreturn]] void ThrowError(const std::string &message);
 
-        void ProcessMessage();
+        void ProcessMessages();
         bool ProcessEvents(const char *line);
 
         // Listener
@@ -83,42 +80,6 @@ namespace p2psession
         void FireEvent(const WpaEvent &event);
 
         std::vector<EventListenerEntry> eventListeners;
-        // Task methods.
-        class MessageEventSource
-        {
-        public:
-            MessageEventSource(SessionManager &sessionManager)
-                : sessionManager(sessionManager)
-            {
-            }
-            EventSource<const WpaEvent*> eventSource;
-
-            SessionManager &sessionManager;
-
-            Task<const WpaEvent*> MessageEvents(WpaEventMessage message)
-            {
-                while (true)
-                {
-                    const WpaEvent*event = co_await eventSource.Wait();
-                    if (event->message == message)
-                    {
-                        co_return event;
-                    }
-                }
-            }
-
-            Task<const WpaEvent*> MessageEvents(std::vector<WpaEventMessage> messages)
-            {
-                while (true)
-                {
-                    const WpaEvent*event = co_await eventSource.Wait();
-                    if (std::find(messages.begin(), messages.end(), event->message) != messages.end())
-                    {
-                        co_return event;
-                    }
-                }
-            }
-        };
 
         struct wpa_ctrl *ctrl = nullptr;
         bool attached = false;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <iostream>
 #include <mutex>
 
@@ -10,7 +11,7 @@ namespace p2psession
     enum LogLevel
     {
         Debug,
-        Information,
+        Info,
         Warning,
         Error
     };
@@ -30,6 +31,13 @@ namespace p2psession
                 OnDebug(message);
             }
         }
+        void Debug(const char*message)
+        {
+            if (logLevel <= LogLevel::Debug)
+            {
+                OnDebug(std::string(message));
+            }
+        }
         void Warning(const std::string &message)
         {
             if (logLevel <= LogLevel::Warning)
@@ -37,24 +45,45 @@ namespace p2psession
                 OnWarning(message);
             }
         }
+        void Warning(const char*string)
+        {
+            if (logLevel <= LogLevel::Warning)
+            {
+                OnWarning(std::string(string));
+            }
+        }
         void Info(const std::string &message)
         {
-            if (logLevel <= LogLevel::Information)
+            if (logLevel <= LogLevel::Info)
             {
-                OnDebug(message);
+                OnInfo(message);
+            }
+        }
+        void Info(const char*message)
+        {
+            if (logLevel <= LogLevel::Info)
+            {
+                OnInfo((std::string)message);
             }
         }
         void Error(const std::string &message)
         {
             if (logLevel <= LogLevel::Error)
             {
-                OnDebug(message);
+                OnError(message);
+            }
+        }
+        void Error(const char*message)
+        {
+            if (logLevel <= LogLevel::Error)
+            {
+                OnError((std::string)message);
             }
         }
 
     protected:
         virtual void OnDebug(const std::string &message) = 0;
-        virtual void OnInformation(const std::string &message) = 0;
+        virtual void OnInfo(const std::string &message) = 0;
         virtual void OnWarning(const std::string &message) = 0;
         virtual void OnError(const std::string &message) = 0;
 
@@ -73,7 +102,7 @@ namespace p2psession
             std::unique_lock lock{mutex};
             std::cout << "dbg:" << message << std::endl;
         }
-        virtual void OnInformation(const std::string &message)
+        virtual void OnInfo(const std::string &message)
         {
             std::unique_lock lock{mutex};
             std::cout << "inf:" << message << std::endl;

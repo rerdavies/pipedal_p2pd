@@ -4,7 +4,7 @@
 
 #include "ss.h"
 #include "stddef.h"
-#include "p2psession/wpa_ctrl.h"
+#include "wpa_ctrl.h"
 #include "ss.h"
 #include "stddef.h"
 #include <string_view>
@@ -14,93 +14,72 @@ using namespace std;
 
 SessionManager::SessionManager()
 {
+    this->log = std::make_shared<ConsoleLog>();
+}
+void SessionManager::SetLog(std::shared_ptr<ILog> log)
+{
+    this->log = log;
 }
 
-inline void SessionManager::Log(LogLevel logLevel, const std::string_view &message)
-{
-    this->logCallback(logLevel, message);
-}
-inline void SessionManager::LogDebug(const std::string_view &message)
-{
-    if (logLevel <= LogLevel::Debug)
-    {
-        Log(LogLevel::Debug, message);
-    }
-}
 inline void SessionManager::LogDebug(const std::string_view &tag, const std::string_view &message)
 {
-    if (logLevel <= LogLevel::Debug)
+    if (GetLogLevel() <= LogLevel::Debug)
     {
         string msg = SS(tag << ": " << message);
-        Log(LogLevel::Debug, msg);
-    }
-}
-
-void SessionManager::LogInfo(const std::string_view &message)
-{
-    if (logLevel <= LogLevel::Information)
-    {
-        Log(LogLevel::Information, message);
+        log->Debug(msg);
     }
 }
 
 inline void SessionManager::LogInfo(const std::string_view &tag, const std::string_view &message)
 {
-    if (logLevel <= LogLevel::Information)
+    if (GetLogLevel() <= LogLevel::Info)
     {
         string msg = SS(tag << ": " << message);
-        Log(LogLevel::Information, msg);
+        log->Info(msg);
     }
-}
-
-void SessionManager::LogWarning(const std::string_view &message)
-{
-    if (logLevel <= LogLevel::Warning)
-        Log(LogLevel::Warning, message);
 }
 
 inline void SessionManager::LogWarning(const std::string_view &tag, const std::string_view &message)
 {
-    if (logLevel <= LogLevel::Warning)
+    if (GetLogLevel() <= LogLevel::Warning)
     {
         string msg = SS(tag << ": " << message);
-        Log(LogLevel::Warning, msg);
+        log->Warning(msg);
     }
-}
-
-void SessionManager::LogError(const std::string_view &message)
-{
-    if (logLevel <= LogLevel::Error)
-        Log(LogLevel::Error, message);
 }
 
 inline void SessionManager::LogError(const std::string_view &tag, const std::string_view &message)
 {
-    if (logLevel <= LogLevel::Error)
+    if (GetLogLevel() <= LogLevel::Error)
     {
         string msg = SS(tag << ": " << message);
-        Log(LogLevel::Error, msg);
+        log->Error(msg);
     }
 }
 
+[[noreturn]] void SessionManager::ThrowError(const std::string &message)
+{
+    log->Error(message);
+    throw P2pException(message);
+}
 void SessionManager::Open(const std::string &path)
 {
     if (ctrl)
     {
-        throw P2pException("Already open.");
+        ThrowError("Open: Already open.");
     }
     ctrl = wpa_ctrl_open(path.c_str());
     if (!ctrl)
     {
-        throw P2pException(SS("Can't open " << path));
+        ThrowError(SS("Open: Can't open " << path));
     }
     int result;
     result = wpa_ctrl_attach(ctrl);
-    if (!result)
+    if (result != 0)
     {
         if (result == -2)
-            throw P2pException("Attach timed out.");
-        throw P2pException("Failed to attach.");
+            ThrowError("Open: Attach timed out.");
+        ThrowError("Open: Failed to attach.");
     }
     attached = true;
 }
@@ -147,7 +126,10 @@ static void tokenize(const char *line, char splitChar, std::vector<std::string_v
     }
 }
 
-void SessionManager::ProcessMessage()
+void SessionManager::Run() {
+    ProcessMessages();
+}
+void SessionManager::ProcessMessages()
 {
     vector<string_view> tokens;
     try
@@ -158,38 +140,42 @@ void SessionManager::ProcessMessage()
             size_t size;
             int result = wpa_ctrl_recv(ctrl, reply, &size);
             reply[511] = 0;
-            LogDebug(string_view("WpaRead:"), string_view(reply));
-            if (result != 0)
+            if (result <= 0)
             {
+                if (errno == EAGAIN)
+                {
+                    continue;
+                }
                 if (result == -2)
                 {
-                    LogError("Connection timed out.");
+                    log->Error("wpa_supplicant: Connection timed out.");
                     return;
                 }
                 else
                 {
-                    LogError("Connection lost.");
+                    log->Error("wpa_supplicant: Connection lost.");
                     return;
                 }
             }
-            if (ProcessEvents(reply)) 
+            LogDebug(string_view("WpaRead: "), string_view(reply));
+            if (ProcessEvents(reply))
             {
                 continue;
             }
         }
     }
-   catch (const P2pCancelledException &e)
+    catch (const P2pCancelledException &e)
     {
         return;
     }
     catch (const std::exception e)
     {
-        LogError(SS("Unexpected error: " << e.what()));
-        LogError(string_view("Terminating"));
+        log->Error(SS("Unexpected error: " << e.what()));
+        log->Error("Terminating");
     }
 }
 
-bool SessionManager::ProcessEvents(const char*line)
+bool SessionManager::ProcessEvents(const char *line)
 {
     if (!wpaEvent.ParseLine(line))
     {
@@ -197,25 +183,29 @@ bool SessionManager::ProcessEvents(const char*line)
     }
     if (wpaEvent.message == WpaEventMessage::WPA_UNKOWN_MESSAGE)
     {
-        LogDebug("Unknown message recived: ",string_view(wpaEvent.messageString));
+        LogDebug("Unknown message recived: ", string_view(wpaEvent.messageString));
     }
 
     return true;
-
 }
 
 SessionManager::ListenerHandle SessionManager::AddEventListener(const std::function<EventListenerFn> &callback, const std::vector<WpaEventMessage> &messages)
 {
     ListenerHandle handle = nextEventListenerHandle++;
-    EventListenerEntry entry { handle: handle,messages: messages,callback: callback,   };
+    EventListenerEntry entry{
+        handle : handle,
+        messages : messages,
+        callback : callback,
+    };
     eventListeners.push_back(std::move(entry));
     return handle;
 }
 SessionManager::ListenerHandle SessionManager::AddEventListener(const std::function<EventListenerFn> &callback, WpaEventMessage message)
 {
-    return AddEventListener(callback,std::vector<WpaEventMessage> {{ message}});
+    return AddEventListener(callback, std::vector<WpaEventMessage>{{message}});
 }
-void SessionManager::RemoveEventListener(ListenerHandle handle) {
+void SessionManager::RemoveEventListener(ListenerHandle handle)
+{
     for (auto iter = eventListeners.begin(); iter != eventListeners.end(); ++iter)
     {
         if (iter->handle == handle)
@@ -226,21 +216,126 @@ void SessionManager::RemoveEventListener(ListenerHandle handle) {
     }
 }
 
-void SessionManager::FireEvent(const WpaEvent &wpaEvent) {
-    std::vector<EventListenerEntry> events;
-    // save a copy so clients that add message listeners in response to messages fired don't get spurious events
-    events.insert(events.end(),this->eventListeners.begin(),this->eventListeners.end());
-    for (auto& event: events)
+static bool EventMatches(WpaEventMessage message, const std::vector<WpaEventMessage>& messages)
+{
+    for (size_t i = 0; i < messages.size(); ++i)
     {
-        bool matches = false;
-        for (auto message: event.messages)
+        if (messages[i] == message) return true;
+    }
+    return false;
+}
+
+void SessionManager::FireEvent(const WpaEvent &wpaEvent)
+{
+    auto message = wpaEvent.message;
+    size_t count = this->eventListeners.size();
+    bool matched = false;
+    for (size_t i = 0; i < count; ++i)
+    {
+        auto &entry = this->eventListeners[i];
+        if (EventMatches(message,entry.messages))
         {
-            if (message == wpaEvent.message)
+            matched = true;
+            entry.callback(wpaEvent);
+        }
+    }
+    // now compact out the entries we called.
+    if (matched)
+    {
+        int writeIndex = 0;
+        for (size_t i = 0; i < count; ++i)
+        {
+            auto &entry = this->eventListeners[i];
+            if (!EventMatches(message,entry.messages))
             {
-                matches = true;
-                break;
+                if (i != writeIndex)
+                {
+                    this->eventListeners[writeIndex++] = std::move(this->eventListeners[i]);
+                }
             }
         }
-        event.callback(wpaEvent);
+        if (writeIndex != count)
+        {
+            for (size_t i = count; i < this->eventListeners.size(); ++i)
+            {
+                this->eventListeners[writeIndex++] = std::move(this->eventListeners[i]);
+            }
+        }
+        this->eventListeners.resize(writeIndex);
     }
+    count = messageAwaiters.size();
+    matched = false;
+    CoDispatcher &dispatcher = CoDispatcher::CurrentDispatcher();
+    for (int i = 0; i < count; ++i)
+    {
+        auto &entry = messageAwaiters[i];
+        if (EventMatches(message,entry->messages))
+        {
+            entry->parentHandle.resume();
+            matched = true;
+        }
+    }
+    if (matched)
+    {
+        size_t writeIndex = 0;
+        for (size_t i = 0; i < count; ++i)
+        {
+            auto & entry = messageAwaiters[i];
+            if (!EventMatches(message,entry->messages))
+            {
+                messageAwaiters[writeIndex++] = (messageAwaiters[i]);
+            }
+        }
+        for (size_t i = 0; i < messageAwaiters.size(); ++i)
+        {
+            messageAwaiters[writeIndex++] = (messageAwaiters[i]);
+        }
+        messageAwaiters.resize(writeIndex);
+    }
+}
+
+void MessageAwaiter::await_suspend(std::coroutine_handle<> handle) noexcept
+{
+    sessionManager->PostMessageAwaiter(this);
+}
+
+const WpaEvent &MessageAwaiter::await_resume() const
+{
+    if (cancelled)
+    {
+        throw P2pCancelledException();
+    }
+    if (timedOut)
+    {
+        throw P2pTimeoutException();
+    }
+    auto result = wpaEvent;
+    // delete this? I think we're on the stack/coroutine-frame, so it's ok. Check.
+    return *result;
+}
+
+MessageAwaiter::~MessageAwaiter()
+{
+}
+
+void SessionManager::PostMessageAwaiter(
+    MessageAwaiter *pAwaiter)
+{
+    messageAwaiters.push_back(pAwaiter);
+}
+
+MessageAwaiter SessionManager::CoWaitForMessages(const std::vector<WpaEventMessage> &messages, int64_t timeoutMs)
+{
+    MessageAwaiter result;
+    result.wpaEvent = &this->wpaEvent;
+    result.messages = std::move(messages);
+    result.timeoutMs = timeoutMs;
+    result.sessionManager = this;
+    return result;
+}
+
+MessageAwaiter SessionManager::CoWaitForMessage(WpaEventMessage message, int64_t timeoutMs)
+{
+    std::vector<WpaEventMessage> messages;
+    return CoWaitForMessages(messages, timeoutMs);
 }

@@ -135,7 +135,7 @@ const std::string&WpaEvent::GetNamedParameter(const std::string&name) const
             return namedParameters[i].second;
         }
     }
-    return empty;
+    return emptyString;
 }
 
 int64_t WpaEvent::GetNamedNumericParameter(const std::string & name,int64_t defaultValue) const
@@ -154,7 +154,7 @@ int64_t WpaEvent::GetNamedNumericParameter(const std::string & name,int64_t defa
     }
 
     if (p[0] == 0) return defaultValue;
-    if (p[0] == '0' && (p[1] == 'x' || p[1] = 'X'))
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
     {
         p += 2;
         while (*p) {
