@@ -3,7 +3,7 @@
 using namespace p2psession;
 using namespace std;
 
-Task<> CoForwardInput(AsyncFile &output)
+CoTask<> CoForwardInput(AsyncFile &output)
 {
     try
     {
@@ -20,7 +20,7 @@ Task<> CoForwardInput(AsyncFile &output)
     cout << "Input done." << endl;
 }
 
-Task<> CoForwardOutput(AsyncFile &output)
+CoTask<> CoForwardOutput(AsyncFile &output)
 {
     try
     {

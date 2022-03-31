@@ -8,7 +8,9 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <fcntl.h>
+#include "p2psession/CoTask.h"
 
+using namespace p2psession;
 using namespace p2psession::os;
 using namespace std;
 
@@ -32,6 +34,13 @@ static vector<string> split(const std::string &value, char splitChar)
     return result;
 }
 
+std::filesystem::path p2psession::os::MakeTempFile()
+{
+    char templateName[] = "/tmp/co-XXXXXX";
+    int fd = mkstemp(templateName);
+    close(fd);
+    return templateName;
+}
 std::filesystem::path p2psession::os::FindOnPath(const std::string &filename)
 {
     std::filesystem::path filePath{filename};
@@ -53,7 +62,7 @@ std::filesystem::path p2psession::os::FindOnPath(const std::string &filename)
             return file;
         }
     }
-    throw std::invalid_argument(SS("File not found: " << filePath));
+    throw CoFileNotFoundException(SS("File not found: " << filePath));
 }
 
 // see man 7 environ!
@@ -194,7 +203,7 @@ bool p2psession::os::WaitForProcess(ProcessId processId, int timeoutMs)
             }
             if (timeWaited >= timeoutMs)
             {
-                throw P2pTimeoutException();
+                throw CoTimedOutException();
             }
 
             msleep(100);

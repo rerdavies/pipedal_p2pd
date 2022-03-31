@@ -93,7 +93,7 @@ bool CoConditionVariable::RemoveAwaiter(Awaiter *awaiter)
     return false;
 }
 
-Task<bool> CoConditionVariable::Wait(
+CoTask<bool> CoConditionVariable::Wait(
     std::chrono::milliseconds timeout,
     std::function<bool(void)> condition
     )
@@ -188,7 +188,7 @@ void CoConditionVariable::Notify(std::function<void(void)> action)
     }
 }
 
-Task<> CoMutex::Lock()
+CoTask<> CoMutex::Lock()
 {
     co_await cv.Wait([this] {
         if (locked)

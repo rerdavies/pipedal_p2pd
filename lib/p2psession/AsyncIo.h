@@ -9,60 +9,11 @@
 #include <condition_variable>
 #include "CoService.h"
 #include "Log.h"
+#include "CoExceptions.h"
 
 namespace p2psession
 {
     class IoWaitable;
-
-    /**
-     * @brief An i/o exception.
-     * 
-     * ErrNo() contains an errno error code.
-     */
-    class AsyncIoException : std::runtime_error
-    {
-    public:
-        /**
-         * @brief Throw an AsyncIoException using the current value of errno.
-         * 
-         */
-        [[noreturn]] static void ThrowErrno();
-
-        /**
-         * @brief Construct a new Async Io Exception object
-         * 
-         * @param errNo an errno error code.
-         * @param what text for the error.
-         */
-        AsyncIoException(int errNo, const std::string &what)
-            : std::runtime_error("x"), errNo_(errNo)
-        {
-            what_ = what;
-        }
-        virtual const char *what() const noexcept
-        {
-            return what_.c_str();
-        }
-        int errNo() const { return errNo_; }
-
-    private:
-        std::string what_;
-        int errNo_;
-    };
-
-    /**
-     * @brief End of file exception.
-     * 
-     */
-    class AsyncEndOfFileException : public AsyncIoException
-    {
-    public:
-        /**
-         * @brief Construct a new Async End Of File Exception object
-         * 
-         */
-        AsyncEndOfFileException() : AsyncIoException(ENODATA,"End of file.") {}
-    };
 
     /**
      * @brief Private implementation of asynchronous I/O notifications.

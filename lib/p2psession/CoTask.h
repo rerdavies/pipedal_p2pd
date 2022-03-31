@@ -13,6 +13,7 @@
 #include <functional>
 #include <condition_variable>
 #include <list>
+#include "CoExceptions.h"
 
 
 // ignoring the results of [[nodiscard]] Task<> generates an error.
@@ -24,50 +25,15 @@ namespace p2psession
 
     // forward declarations.
     template <typename... Dummy>
-    struct Task;
+    struct CoTask;
     template <typename T>
-    struct Task<T>;
+    struct CoTask<T>;
     template <>
-    struct Task<>;
+    struct CoTask<>;
 
     constexpr std::chrono::milliseconds NO_TIMEOUT = std::chrono::milliseconds(-1);
 
 
-    // --- Exceptions ---
-
-    class CoException: public std::exception
-    {
-    public:
-        using base = std::exception;
-
-        CoException() {}
-        virtual const char *what() const noexcept = 0;
-
-    };
-    class CoCancelledException : public CoException
-    {
-    public:
-        using base = CoException;
-        CoCancelledException()
-            {}
-
-        virtual const char *what() const noexcept
-        {
-            return "Cancelled.";
-        }
-    };
-    class CoTimedOutException : public CoException
-    {
-    public:
-        using base = CoException;
-        
-        CoTimedOutException() {}
-
-        virtual const char *what() const noexcept
-        {
-            return "Timed out.";
-        }
-    };
 
     template <typename T, typename RETURN_TYPE>
     concept Awaitable = requires(T a, std::coroutine_handle<> h)
@@ -127,7 +93,7 @@ namespace p2psession
         void PumpUntilIdle();
 
         void MessageLoop();
-        void MessageLoop(Task<> threadMain);
+        void MessageLoop(CoTask<> threadMain);
 
         void Quit(); 
 
@@ -155,10 +121,10 @@ namespace p2psession
             static size_t GetNumberOfDeadThreads();
         };
 
-        void StartThread(Task<> task);
+        void StartThread(CoTask<> task);
 
     private:
-        std::list<Task<>> coroutineThreads;        
+        std::list<CoTask<>> coroutineThreads;        
         void ScavengeTasks();
         bool inMessageLoop = false;
         bool quit = false;
@@ -224,12 +190,12 @@ namespace p2psession
     };
 
     template <typename... Dummy>
-    struct Task;
+    struct CoTask;
     template <typename T>
-    struct Task<T>;
+    struct CoTask<T>;
 
     template <typename T>
-    struct Task<T>
+    struct CoTask<T>
     {
         // The return type of a coroutine must contain a nested struct or type alias called `promise_type`
         struct promise_type
@@ -249,7 +215,7 @@ namespace p2psession
             // This handle is assigned to when the coroutine itself is suspended (see await_suspend)
             std::coroutine_handle<promise_type> handle;
 
-            Task get_return_object() noexcept
+            CoTask get_return_object() noexcept
             {
                 return {std::coroutine_handle<promise_type>::from_promise(*this)};
             }
@@ -340,7 +306,7 @@ namespace p2psession
     inline CoDispatcher & Dispatcher() { return CoDispatcher::CurrentDispatcher(); }
 
     template <>
-    struct Task<>
+    struct CoTask<>
     {
         // The return type of a coroutine must contain a nested struct or type alias called `promise_type`
         struct promise_type
@@ -450,7 +416,7 @@ namespace p2psession
         std::coroutine_handle<promise_type> handle;
 
         // To satisfy VS code. Unsure if this is correct in newer C++20 standards.
-        Task(std::coroutine_handle<promise_type> handle)
+        CoTask(std::coroutine_handle<promise_type> handle)
         {
             this->handle = handle;
         }
@@ -528,7 +494,7 @@ namespace p2psession
 
 
     template <typename T>
-    T Task<T>::GetResult()
+    T CoTask<T>::GetResult()
     {
         while (!handle.done())
         {

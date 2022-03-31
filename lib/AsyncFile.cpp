@@ -193,7 +193,7 @@ int AsyncFile::Detach()
 
     return result;
 }
-Task<> AsyncFile::CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode mode)
+CoTask<> AsyncFile::CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode mode)
 {
 
     int file_fd = -1;
@@ -212,14 +212,14 @@ Task<> AsyncFile::CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode 
     }
     if (file_fd == -1)
     {
-        AsyncIoException::ThrowErrno();
+        CoIoException::ThrowErrno();
     }
     this->file_fd = file_fd;
     WatchFile(file_fd);
     co_return;
 }
 
-Task<int> AsyncFile::CoRead(void *data, size_t length, std::chrono::milliseconds timeout)
+CoTask<int> AsyncFile::CoRead(void *data, size_t length, std::chrono::milliseconds timeout)
 {
     int totalRead = 0;
 
@@ -249,7 +249,7 @@ Task<int> AsyncFile::CoRead(void *data, size_t length, std::chrono::milliseconds
             }
             else
             {
-                AsyncIoException::ThrowErrno();
+                CoIoException::ThrowErrno();
             }
         }
         else
@@ -269,7 +269,7 @@ static std::chrono::milliseconds Now()
     return std::chrono::duration_cast<std::chrono::milliseconds>(duration);
 }
 
-Task<> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout)
+CoTask<> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout)
 {
     std::chrono::milliseconds expiryTime = Now() + timeout;
     this->writeReady = false;
@@ -290,7 +290,7 @@ Task<> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::millisec
             }
             else
             {
-                AsyncIoException::ThrowErrno();
+                CoIoException::ThrowErrno();
             }
         }
         else
@@ -309,19 +309,19 @@ void AsyncFile::CreateSocketPair(AsyncFile &sender, AsyncFile &receiver)
     int result = socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, sv);
     if (result == -1)
     {
-        AsyncIoException::ThrowErrno();
+        CoIoException::ThrowErrno();
     }
     sender.Attach(sv[0]);
     receiver.Attach(sv[1]);
 }
 
-Task<> AsyncFile::CoWriteLine(const std::string&line, std::chrono::milliseconds timeout)
+CoTask<> AsyncFile::CoWriteLine(const std::string&line, std::chrono::milliseconds timeout)
 {
     co_await CoWrite(line.c_str(),line.length(),timeout);
     char endl = '\n';
     co_await CoWrite(&endl,1,timeout);
 }
-Task<bool> AsyncFile::CoReadLine(std::string*result)
+CoTask<bool> AsyncFile::CoReadLine(std::string*result)
 {
     while (true)
     {

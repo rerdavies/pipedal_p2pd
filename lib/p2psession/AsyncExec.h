@@ -46,7 +46,7 @@ namespace p2psession
          * If the operation times out, a CoTimeoutException() is thrown.
          * 
          */
-        Task<bool> CoWait(int timeoutMs = -1);
+        CoTask<bool> CoWait(int timeoutMs = -1);
 
         /**
          * @brief Syncrhonously wait for the child process to terminate.
@@ -74,7 +74,7 @@ namespace p2psession
          * CoKill() attempts a graceful shutdown by sending a SIGTRM signal. If the child doesn't respond,
          * within three seconds, CoKill() sends a SIGKILL signal.
          */
-        Task<> CoKill();
+        CoTask<> CoKill();
 
         /**
          * @brief Terminate the child process.

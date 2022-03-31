@@ -20,7 +20,7 @@ void WpaCliWrapper::Execute(const std::string &deviceName)
 
 
 
-Task<> WpaCliWrapper::ProcessMessages()
+CoTask<> WpaCliWrapper::ProcessMessages()
 {
     WpaEvent event;
     std::string line;
@@ -41,7 +41,7 @@ Task<> WpaCliWrapper::ProcessMessages()
     }
 }
 
-Task<> WpaCliWrapper::Run(int argc, char **argv)
+CoTask<> WpaCliWrapper::Run(int argc, char **argv)
 {
     vector<string> args;
 

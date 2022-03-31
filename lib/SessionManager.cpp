@@ -1,5 +1,5 @@
 #include "p2psession/SessionManager.h"
-#include "p2psession/P2pException.h"
+#include "p2psession/CoExceptions.h"
 #include "p2psession/WpaEvent.h"
 
 #include "ss.h"

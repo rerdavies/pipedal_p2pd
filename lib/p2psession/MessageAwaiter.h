@@ -1,7 +1,7 @@
 
 // included in SessionManager.h. Don't include directly.
 #pragma once
-#include "P2pException.h"
+#include "CoExceptions.h"
 
 namespace p2psession
 {

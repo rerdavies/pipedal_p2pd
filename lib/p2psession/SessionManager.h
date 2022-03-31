@@ -33,7 +33,7 @@ namespace p2psession
 
         void Close();
 
-        // Task methods.
+        // CoTask methods.
         using ListenerHandle = uint64_t;
 
         // WpaEvent& event = co_wait CoWaitForMessage(...)

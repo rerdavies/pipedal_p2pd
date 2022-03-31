@@ -1,5 +1,6 @@
 #include "p2psession/CoEvent.h"
-#include "p2psession/P2pException.h"
+#include "p2psession/CoExceptions.h"
+#include "p2psession/Os.h"
 #include <cassert>
 
 using namespace p2psession;
@@ -17,7 +18,7 @@ public:
 
     CoConditionVariable targetConditionVariable;
 
-    Task<> Source()
+    CoTask<> Source()
     {
 
         co_await sourceConditionVariable.Wait();
@@ -56,7 +57,7 @@ public:
 
         co_return;
     }
-    Task<> CoConditionVariableTest()
+    CoTask<> CoConditionVariableTest()
     {
         state = 0;
         Dispatcher().StartThread(Source());
@@ -102,7 +103,7 @@ class CMutexTest
     int counter = instances * locks_per_instance;
     CoMutex mutex;
 
-    [[nodiscard]] Task<> MutexTask(int id)
+    [[nodiscard]] CoTask<> MutexTask(int id)
     {
         for (int i = 0; i < locks_per_instance; ++i)
         {
@@ -113,7 +114,7 @@ class CMutexTest
         }
         co_return;
     }
-    [[nodiscard]] Task<> CoMain(bool foreground)
+    [[nodiscard]] CoTask<> CoMain(bool foreground)
     {
         if (foreground)
         {
@@ -167,7 +168,7 @@ class CBlockingQueueTest
 {
 public:
     using queue_type = CoBlockingQueue<int>;
-    Task<> Writer(queue_type &queue, int numberOfWrites, int writeBatchSize)
+    CoTask<> Writer(queue_type &queue, int numberOfWrites, int writeBatchSize)
     {
         queue_type::item_type value;
 
@@ -181,7 +182,7 @@ public:
         }
         queue.Close();
     }
-    Task<> Reader(queue_type &queue,int numberOfWrites, int readerBatchSize)
+    CoTask<> Reader(queue_type &queue,int numberOfWrites, int readerBatchSize)
     {
         queue_type::item_type value;
         int numberOfReads = 0;
@@ -205,7 +206,7 @@ public:
         co_return;
     }
 
-    Task<> TestBlockingQueue(bool foreground, int numberOfWrites, size_t queueSize, int readerBatchSize, int writeBatchSize)
+    CoTask<> TestBlockingQueue(bool foreground, int numberOfWrites, size_t queueSize, int readerBatchSize, int writeBatchSize)
     {
         if (foreground)
         {
@@ -226,7 +227,7 @@ public:
     {
         cout << "--- TestBlockingQueue" << endl;
         cout << "    Foreground" << endl;
-        Task<> task = TestBlockingQueue(true, 100, 6, 7,8);
+        CoTask<> task = TestBlockingQueue(true, 100, 6, 7,8);
         task.GetResult();
         cout << "    Background" << endl;
         task = TestBlockingQueue(false, 99, 5, 11,7);

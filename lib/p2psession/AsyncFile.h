@@ -70,7 +70,7 @@ namespace p2psession {
          * @param mode Read, Write, or Append.
          * @return Task<> 
          */
-        Task<> CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode mode);
+        CoTask<> CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode mode);
 
         /**
          * @brief Atach a file handle and take ownership of it.
@@ -102,7 +102,7 @@ namespace p2psession {
          * will be returned before the exception is thrown.
          * 
          */
-        Task<int> CoRead(void *data, size_t length, std::chrono::milliseconds timeout = -1ms);
+        CoTask<int> CoRead(void *data, size_t length, std::chrono::milliseconds timeout = -1ms);
         /**
          * @brief Read a line of data.
          * 
@@ -110,7 +110,7 @@ namespace p2psession {
          * @return true Success.
          * @return false End of file.
          */
-        Task<bool> CoReadLine(std::string*result);
+        CoTask<bool> CoReadLine(std::string*result);
 
         /**
          * @brief Write a buffer of data.
@@ -124,7 +124,7 @@ namespace p2psession {
          * Always attempts to write the entire buffer. If a timeout occurs, a CoTimeoutException is thrown. After a timeout, the amount of data written 
          * is indeterminate.
          */
-        Task<> CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout = -1ms);
+        CoTask<> CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout = -1ms);
 
 
         /**
@@ -138,7 +138,7 @@ namespace p2psession {
          * If a timeout occurs, a CoTimeoutException is thrown. After a timeout, the amount of data written 
          * is indeterminate.
          */
-        Task<> CoWrite(const std::string & text, std::chrono::milliseconds timeout = NO_TIMEOUT)
+        CoTask<> CoWrite(const std::string & text, std::chrono::milliseconds timeout = NO_TIMEOUT)
         {
             co_await CoWrite(text.c_str(),text.length(), timeout);
             co_return;
@@ -154,7 +154,7 @@ namespace p2psession {
          * If a timeout occurs, a CoTimeoutException is thrown. After a timeout, the amount of data written 
          * is indeterminate.
          */
-        Task<> CoWriteLine(const std::string &text, std::chrono::milliseconds timeout = NO_TIMEOUT);
+        CoTask<> CoWriteLine(const std::string &text, std::chrono::milliseconds timeout = NO_TIMEOUT);
 
         /**
          * @brief Open the supplied AsyncFiles as a pair of connected anonymous pipes.
@@ -162,7 +162,7 @@ namespace p2psession {
          * @param input 
          * @param output 
          * 
-         * @throws AsyncIoException
+         * @throws CoIoException
          */
         static void CreateSocketPair(AsyncFile &input, AsyncFile &output);
         /**
@@ -171,7 +171,7 @@ namespace p2psession {
          * @param input 
          * @param output 
          * 
-         * @throws AsyncIoException
+         * @throws CoIoException
          */
 
         static void CreateSocketPair(std::unique_ptr<AsyncFile>*input, std::unique_ptr<AsyncFile> *output)
@@ -186,7 +186,7 @@ namespace p2psession {
          * @param input 
          * @param output 
          * 
-         * @throws AsyncIoException
+         * @throws CoIoException
          */
         static void CreateSocketPair(std::shared_ptr<AsyncFile>*input, std::shared_ptr<AsyncFile> *output)
         {

@@ -116,7 +116,7 @@ void CoDispatcher::PumpUntilIdle()
     }
 }
 
-void CoDispatcher::MessageLoop(Task<> threadMain)
+void CoDispatcher::MessageLoop(CoTask<> threadMain)
 {
     StartThread(threadMain);
     MessageLoop();
@@ -473,7 +473,7 @@ void CoDispatcher::ScavengeTasks()
     }
 }
 
-void CoDispatcher::StartThread(Task<> task)
+void CoDispatcher::StartThread(CoTask<> task)
 {
     ScavengeTasks();
     coroutineThreads.insert(coroutineThreads.begin(), task);

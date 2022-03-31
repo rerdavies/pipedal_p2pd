@@ -8,14 +8,10 @@
 using namespace p2psession;
 using namespace std;
 
-std::filesystem::path GetTempFile()
-{
-    filesystem::path path = tmpnam(nullptr);
-    return path;
-}
+
 //////////////// Read Fast Write Slow  ////////////////////////
 
-Task<> CoSlowWriter(std::unique_ptr<AsyncFile> writer, bool trace)
+CoTask<> CoSlowWriter(std::unique_ptr<AsyncFile> writer, bool trace)
 {
     int i = 0;
     std::string msg;
@@ -43,7 +39,7 @@ Task<> CoSlowWriter(std::unique_ptr<AsyncFile> writer, bool trace)
 
 constexpr size_t FAST_WRITE_SIZE = 1024*1024;
 
-Task<> CoFastWriter(std::unique_ptr<AsyncFile> writer, size_t lengthBytes,bool trace)
+CoTask<> CoFastWriter(std::unique_ptr<AsyncFile> writer, size_t lengthBytes,bool trace)
 {
     int i = 0;
     std::string msg;
@@ -66,7 +62,7 @@ Task<> CoFastWriter(std::unique_ptr<AsyncFile> writer, size_t lengthBytes,bool t
     co_return;
 }
 
-Task<> CoSlowReader(std::unique_ptr<AsyncFile> reader, size_t expectedBytes,bool trace)
+CoTask<> CoSlowReader(std::unique_ptr<AsyncFile> reader, size_t expectedBytes,bool trace)
 {
     char buffer[113];
 
@@ -113,7 +109,7 @@ Task<> CoSlowReader(std::unique_ptr<AsyncFile> reader, size_t expectedBytes,bool
     }
 }
 
-Task<> CoFastReader(std::unique_ptr<AsyncFile> reader,bool trace)
+CoTask<> CoFastReader(std::unique_ptr<AsyncFile> reader,bool trace)
 {
     char buffer[1024];
     while (true)
@@ -134,7 +130,7 @@ Task<> CoFastReader(std::unique_ptr<AsyncFile> reader,bool trace)
 
 /////////////////////////
 
-Task<> CoWriteFastReadSlow()
+CoTask<> CoWriteFastReadSlow()
 {
     cout << "    Read Slow Write Fast" << endl;
 
@@ -160,7 +156,7 @@ Task<> CoWriteFastReadSlow()
 }
 
 ///////////////////////////
-Task<> CoReadFastWriteSlowTest()
+CoTask<> CoReadFastWriteSlowTest()
 {
     cout << "Read Fast Write Slow" << endl;
 
@@ -186,7 +182,7 @@ void ReadWriteTest()
 {
     cout << "--- ReadWriteTest ---" << endl;
 
-    Task<> task = CoWriteFastReadSlow();
+    CoTask<> task = CoWriteFastReadSlow();
     task.GetResult();
 
     task = CoReadFastWriteSlowTest();

@@ -20,11 +20,11 @@ using namespace std;
 AsyncIo *AsyncIo::instance;
 
 
-void AsyncIoException::ThrowErrno()
+void CoIoException::ThrowErrno()
 {
     int err = errno;
     char *strError = strerror(err);
-    throw AsyncIoException(err, strError);
+    throw CoIoException(err, strError);
 }
 
 class AsyncIoLinux : AsyncIo
@@ -128,7 +128,7 @@ private:
                     {
                         continue;
                     }
-                    AsyncIoException::ThrowErrno();
+                    CoIoException::ThrowErrno();
                 }
                 for (int i = 0; i < result; ++i)
                 {
@@ -164,7 +164,7 @@ AsyncIoLinux linuxInstance;
 
 [[noreturn]] void ThrowErrno()
 {
-    AsyncIoException::ThrowErrno();
+    CoIoException::ThrowErrno();
 }
 
 

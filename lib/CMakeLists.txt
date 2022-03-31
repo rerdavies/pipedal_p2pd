@@ -16,7 +16,6 @@ add_library(p2psession SHARED
 ./p2psession/Log.h
 ./p2psession/AsyncIo.h
 ./p2psession/Fifo.h
-./p2psession/P2pException.h
 ./p2psession/WpaCliWrapper.h
 ./p2psession/AsyncExec.h
 ./p2psession/CoEvent.h

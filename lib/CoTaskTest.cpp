@@ -33,7 +33,7 @@ void terminate(const std::exception &e)
 
 
 /****** DelayTest ************************************/
-Task<int> DelayTask2(int instance)
+CoTask<int> DelayTask2(int instance)
 {
     cout << "    Enter Task2(instance)" << endl;
     co_await CoDelay(1000ms);
@@ -42,7 +42,7 @@ Task<int> DelayTask2(int instance)
     co_return 1;
 }
 
-Task<int> DelayTask1()
+CoTask<int> DelayTask1()
 {
     auto startMs = CoDispatcher::Now();
     int checkPoints = 1;
@@ -69,7 +69,7 @@ void DelayTest()
 {
 
     cout << "--- DelayTest" << endl;
-    Task<int> task = DelayTask1();
+    CoTask<int> task = DelayTask1();
 
     task.GetResult();
 
@@ -79,12 +79,12 @@ void DelayTest()
 
 void ConceptsTest()
 {
-    static_assert(Awaitable<Task<int>, int>);
-    static_assert(Awaitable<Task<>, void>);
+    static_assert(Awaitable<CoTask<int>, int>);
+    static_assert(Awaitable<CoTask<>, void>);
 }
 
 /***************************/
-Task<int> BackgroundTask1()
+CoTask<int> BackgroundTask1()
 {
     try
     {
@@ -115,7 +115,7 @@ Task<int> BackgroundTask1()
 void BackgroundTest()
 {
     cout << "--- BackgroundTest " << endl;
-    Task<int> task = BackgroundTask1();
+    CoTask<int> task = BackgroundTask1();
 
     CoDispatcher::CurrentDispatcher().PumpUntilIdle();
 
@@ -127,7 +127,7 @@ void BackgroundTest()
 }
 
 /***************************/
-Task<int> BackgroundNested()
+CoTask<int> BackgroundNested()
 {
     cout << "Nest>" << endl;
     co_await BackgroundTask1();
@@ -137,7 +137,7 @@ Task<int> BackgroundNested()
 void BackgroundNestedTest()
 {
     cout << "--- BackgroundNestedTest " << endl;
-    Task<int> task = BackgroundNested();
+    CoTask<int> task = BackgroundNested();
 
     CoDispatcher::CurrentDispatcher().PumpUntilIdle();
 
@@ -148,19 +148,19 @@ void BackgroundNestedTest()
     CoDispatcher::DestroyDispatcher(); // check for leasks
 }
 /***************************/
-Task<int> SwitchOnReturnBg()
+CoTask<int> SwitchOnReturnBg()
 {
     cout << "Nest>" << endl;
     co_await CoBackground();
     cout << "<Nest" << endl;
 }
-Task<int> SwitchOnReturnFg()
+CoTask<int> SwitchOnReturnFg()
 {
     cout << "Nest>" << endl;
     co_await CoForeground();
     cout << "<Nest" << endl;
 }
-Task<int> SwitchOnReturn()
+CoTask<int> SwitchOnReturn()
 {
     try
     {
@@ -185,7 +185,7 @@ Task<int> SwitchOnReturn()
 void BackgroundSwitchOnreturnTest()
 {
     cout << "--- BackgroundSwitchOnreturnTest " << endl;
-    Task<int> task = SwitchOnReturn();
+    CoTask<int> task = SwitchOnReturn();
     task.GetResult();
     assert(CoDispatcher::CurrentDispatcher().IsDone());
     CoDispatcher::DestroyDispatcher();
@@ -218,12 +218,12 @@ void TestThreadPoolSizing()
 }
 /** VoidTest *************************************/
 
-Task<> VoidTask1()
+CoTask<> VoidTask1()
 {
     co_await CoDelay(100ms);
 }
 
-Task<> VoidTask2()
+CoTask<> VoidTask2()
 {
     throw std::logic_error("Expected exception.");
 }
@@ -231,12 +231,12 @@ Task<> VoidTask2()
 
 void VoidTest()
 {
-    Task<> task = VoidTask1();
+    CoTask<> task = VoidTask1();
     task.GetResult();
 
     bool caught = false;
     try {
-        Task<> task = VoidTask2();
+        CoTask<> task = VoidTask2();
         task.GetResult();
     } catch (std::exception &e)
     {
@@ -249,14 +249,14 @@ void VoidTest()
 }
 /***************************************/
 
-Task<> CatchTest1()
+CoTask<> CatchTest1()
 {
     co_await CoDelay(200ms);
     throw std::logic_error("Expected exception"); 
     co_return;
 }
 
-Task<std::string> CatchTest2()
+CoTask<std::string> CatchTest2()
 {
     try {
         co_await CatchTest1();
@@ -275,7 +275,7 @@ void CatchTest()
     // This one terminates. It's understandable, given that we're asking GCC to propagate an 
     // exception under difficult circumstances.
     try {
-        Task<> task = CatchTest1();
+        CoTask<> task = CatchTest1();
         task.GetResult();
     } catch (const std::exception &e)
     {
@@ -298,7 +298,7 @@ void CatchTest()
     }
 
     try {
-        Task<std::string> task = CatchTest2();
+        CoTask<std::string> task = CatchTest2();
         std::string result = task.GetResult();
         cout << "exception handled in coroutine: " << result << endl;
 

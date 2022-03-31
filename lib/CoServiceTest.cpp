@@ -69,7 +69,7 @@ auto SimpleService(
 };
 
 
-Task<> SimpleServiceTest1(bool onForeground) {
+CoTask<> SimpleServiceTest1(bool onForeground) {
     if (onForeground)
     {
         co_await CoForeground();
@@ -145,7 +145,7 @@ Task<> SimpleServiceTest1(bool onForeground) {
     co_return;
 }
 
-Task<> SimpleServiceTest()
+CoTask<> SimpleServiceTest()
 {
     cout << "    On Foreground:" << endl;
     co_await SimpleServiceTest1(true);
@@ -164,7 +164,7 @@ void TestSimpleService()
 {
     cout << "---- TestSimpleService ---" << endl;
     CoDispatcher &dispatcher = CoDispatcher::CurrentDispatcher();
-    Task<> task = SimpleServiceTest();
+    CoTask<> task = SimpleServiceTest();
 
     task.GetResult();
 }

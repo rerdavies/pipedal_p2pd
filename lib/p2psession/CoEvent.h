@@ -90,7 +90,7 @@ namespace p2psession
          *     }
 
          */
-        [[nodiscard]] Task<bool> Wait(
+        [[nodiscard]] CoTask<bool> Wait(
             std::chrono::milliseconds timeout,
             std::function<bool(void)> conditionTest = nullptr);
 
@@ -120,7 +120,7 @@ namespace p2psession
          * 
          * Used as the basis of other synchronization methods, such as CoMutex.
          */
-        [[nodiscard]] Task<> Wait(std::function<bool(void)> conditionTest)
+        [[nodiscard]] CoTask<> Wait(std::function<bool(void)> conditionTest)
         {
             bool result = co_await Wait(NO_TIMEOUT, conditionTest);
             co_return;
@@ -139,7 +139,7 @@ namespace p2psession
  *     }
  */
 
-        [[nodiscard]] Task<> Wait()
+        [[nodiscard]] CoTask<> Wait()
         {
             co_await Wait(std::chrono::milliseconds(NO_TIMEOUT), nullptr);
             co_return;
@@ -246,7 +246,7 @@ namespace p2psession
          * Locks are non-reentrant. Calling Lock() on a CoMutex that you already own will deadlock. Every call to Lock() should be balanced
          * with a corresponding call to release.
          */
-        [[nodiscard]] Task<> Lock();
+        [[nodiscard]] CoTask<> Lock();
 
         /**
          * @brief Release the mutex.
@@ -298,7 +298,7 @@ namespace p2psession
          * 
          * An Unlock() call will be made on the CoMutext when CoLockGuard is destructed.
          */
-        [[nodiscard]] Task<> Lock(CoMutex &mutex)
+        [[nodiscard]] CoTask<> Lock(CoMutex &mutex)
         {
             pMutex = &mutex;
             co_await mutex.Lock();
@@ -348,7 +348,7 @@ namespace p2psession
          * 
          * The current coroutine is suspended if there is no space in the queue. 
          */
-        Task<> Push(const T &value, std::chrono::milliseconds timeout = NO_TIMEOUT);
+        CoTask<> Push(const T &value, std::chrono::milliseconds timeout = NO_TIMEOUT);
 
         /**
          * @brief Move a value into the queue.
@@ -360,7 +360,7 @@ namespace p2psession
          * 
          * The current coroutine is suspended if there is no space in the queue. 
          */
-        Task<> Push(T &&value, std::chrono::milliseconds timeout = NO_TIMEOUT);
+        CoTask<> Push(T &&value, std::chrono::milliseconds timeout = NO_TIMEOUT);
 
         /**
          * @brief Take a value from the queue.
@@ -372,7 +372,7 @@ namespace p2psession
          * 
          * A CoTimeoutException is thrown if the timeout expires.
          */
-        Task<T> Take(std::chrono::milliseconds timeout = NO_TIMEOUT);
+        CoTask<T> Take(std::chrono::milliseconds timeout = NO_TIMEOUT);
 
         /**
          * @brief Close the queue.
@@ -410,7 +410,7 @@ namespace p2psession
     }
     /*****  CoBlockingQueue inlines ****************************/
     template <typename T>
-    Task<> CoBlockingQueue<T>::Push(const T &value, std::chrono::milliseconds timeout)
+    CoTask<> CoBlockingQueue<T>::Push(const T &value, std::chrono::milliseconds timeout)
     {
         co_await pushCv.Wait(
             timeout,
@@ -429,7 +429,7 @@ namespace p2psession
         co_return;
     }
     template <typename T>
-    Task<> CoBlockingQueue<T>::Push(T &&value, std::chrono::milliseconds timeout)
+    CoTask<> CoBlockingQueue<T>::Push(T &&value, std::chrono::milliseconds timeout)
     {
         co_await pushCv.Wait(
             timeout,
@@ -448,7 +448,7 @@ namespace p2psession
         co_return;
     }
     template <typename T>
-    Task<T> CoBlockingQueue<T>::Take(std::chrono::milliseconds timeout)
+    CoTask<T> CoBlockingQueue<T>::Take(std::chrono::milliseconds timeout)
     {
         T value;
         co_await takeCv.Wait(
