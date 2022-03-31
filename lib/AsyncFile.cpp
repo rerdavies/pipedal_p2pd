@@ -7,6 +7,7 @@
 #include <functional>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include "p2psession/Os.h"
 
 using namespace p2psession;
 using namespace p2psession::private_;
@@ -136,6 +137,7 @@ void AsyncFile::WatchFile(int fd)
         writeReady = true;
         eventHandle = AsyncIo::GetInstance().WatchFile(fd, [this](AsyncIo::EventData eventData) {
             std::lock_guard lock { callbackMutex };
+
             if (eventData.readReady || eventData.hasError)
             {
                 this->readReady = true;
@@ -173,7 +175,12 @@ void AsyncFile::Close()
 
 void AsyncFile::Attach(int file_fd)
 {
-    WatchFile(-1);
+    Close();
+    // set O_NON_BLOCKING
+    if (file_fd != -1)
+    {
+        os::SetFileNonBlocking(file_fd,true);
+    }
     this->file_fd = file_fd;
     WatchFile(this->file_fd);
 }
@@ -182,6 +189,8 @@ int AsyncFile::Detach()
     int result = this->file_fd;
     WatchFile(-1);
     this->file_fd = -1;
+    os::SetFileNonBlocking(result,false);
+
     return result;
 }
 Task<> AsyncFile::CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode mode)
@@ -192,13 +201,13 @@ Task<> AsyncFile::CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode 
     switch (mode)
     {
     case OpenMode::Read:
-        file_fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
+        file_fd = open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         break;
     case OpenMode::Create:
-        file_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, PERMS | O_NONBLOCK);
+        file_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NONBLOCK , PERMS);
         break;
     case OpenMode::Append:
-        file_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, PERMS | O_NONBLOCK);
+        file_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND |O_NONBLOCK , PERMS);
         break;
     }
     if (file_fd == -1)
@@ -260,7 +269,7 @@ static std::chrono::milliseconds Now()
     return std::chrono::duration_cast<std::chrono::milliseconds>(duration);
 }
 
-Task<ssize_t> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout)
+Task<> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout)
 {
     std::chrono::milliseconds expiryTime = Now() + timeout;
     this->writeReady = false;
@@ -271,7 +280,7 @@ Task<ssize_t> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::m
         ssize_t nWritten = write(this->file_fd, p, length);
         if (nWritten == 0)
         {
-            throw AsyncIoException("Write returned zero. Results are *unspecified* (POSIX 1.1)");
+            throw std::logic_error("Write returned zero. Results are *unspecified* (POSIX 1.1)");
         }
         if (nWritten < 0)
         {
@@ -291,17 +300,52 @@ Task<ssize_t> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::m
             p += nWritten;
         }
     }
-    co_return totalWritten;
 }
 
 void AsyncFile::CreateSocketPair(AsyncFile &sender, AsyncFile &receiver)
 {
     int sv[2];
-    int result = socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sv);
+    // int result = pipe(sv);
+    int result = socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, sv);
     if (result == -1)
     {
         AsyncIoException::ThrowErrno();
     }
     sender.Attach(sv[0]);
     receiver.Attach(sv[1]);
+}
+
+Task<> AsyncFile::CoWriteLine(const std::string&line, std::chrono::milliseconds timeout)
+{
+    co_await CoWrite(line.c_str(),line.length(),timeout);
+    char endl = '\n';
+    co_await CoWrite(&endl,1,timeout);
+}
+Task<bool> AsyncFile::CoReadLine(std::string*result)
+{
+    while (true)
+    {
+        while (lineHead != lineTail)
+        {
+            char c = lineBuffer[lineHead++];
+            if (c == '\n')
+            {
+                *result = lineSS.str();
+                lineSS = stringstream();
+                co_return true;
+            }
+
+            lineSS << c;
+        }
+        int nRead = co_await CoRead(lineBuffer,sizeof(lineBuffer));
+        if (nRead == 0)
+        {
+            *result = lineSS.str();
+            lineSS.clear();
+            co_return result->length() != 0;
+        }
+        lineHead = 0;
+        lineTail = nRead;
+    }
+
 }

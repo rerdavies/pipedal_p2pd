@@ -176,7 +176,7 @@ Task<int> SwitchOnReturn()
     }
     catch (const exception &e)
     {
-        e << "Error: " << e.what() << endl;
+        cout << "Error: " << e.what() << endl;
         cout.flush();
         terminate(e);
     }

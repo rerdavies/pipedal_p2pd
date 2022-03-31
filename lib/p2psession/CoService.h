@@ -23,11 +23,12 @@ and back on to the couroutine thread when done. For method that have a co_return
 
     template <typename T>
     class MyServiceImplementation {
+        using return_type=T;
         // Some method parameters stored here.
         ....
         // ****
         void Execute(CoServiceCallback<RETURN_TYPE> *pCallback);
-        void CancelExecute(CoServiceCallback<RETURN_TYPE> *pCallback);
+        bool CancelExecute(CoServiceCallback<RETURN_TYPE> *pCallback);
     };
 
 For methods returning void, the form is:
@@ -37,8 +38,8 @@ For methods returning void, the form is:
         ....
         // ****
 
-        void Execute(CoServiceCallback<> *pCallback);
-        bool CancelExecute(CoServiceCallback<> *pCallback);
+        void Execute(CoServiceCallback<void> *pCallback);
+        bool CancelExecute(CoServiceCallback<void> *pCallback);
     };
 
 The implentation is hooked up using code that follows this form:
@@ -334,13 +335,14 @@ has been given.
 
             // prepare to lose *this...
             auto handle = this->suspendedHandle;
-            auto dispatcher = this->returnDispatcher;
+            auto dispatcher = this->foregroundDispatcher;
+            bool isForeground = this->isForeground;
 
             this->suspendedHandle = 0;
-            this->returnDispatcher = nullptr;
+            this->foregroundDispatcher = nullptr;
 
             // From this point on, *this is no longer valid.
-            if (dispatcher->IsForeground())
+            if (isForeground)
             {
                 dispatcher->Post(handle);
             }
@@ -497,12 +499,13 @@ has been given.
         bool timeoutRequested = false;
         uint64_t timerHandle = 0;
 
-        bool isForeground = true;
         bool hasError = false;
         bool hasTimeout = false;
         bool cancelled = false;
         std::exception_ptr exceptionPtr;
-        CoDispatcher *returnDispatcher;
+
+        bool isForeground = true;
+        CoDispatcher *foregroundDispatcher = nullptr;
     };
 
     template <typename SERVICE_IMPLEMENTATION>
@@ -630,7 +633,10 @@ has been given.
     template <typename SERVICE_IMPLEMENTATION>
     CoServiceBase<SERVICE_IMPLEMENTATION>::CoServiceBase()
     {
-        this->returnDispatcher = &CoDispatcher::CurrentDispatcher();
+        CoDispatcher &dispatcher = CoDispatcher::CurrentDispatcher();
+
+        this->foregroundDispatcher = dispatcher.GetForegroundDispatcher();
+        this->isForeground = dispatcher.IsForeground();
     }
 
     template <typename SERVICE_IMPLEMENTATION, typename RETURN_TYPE>
@@ -643,15 +649,15 @@ has been given.
     template <IsTypedCoServiceImplementation SERVICE_IMPLEMENTATION>
     void CoService<SERVICE_IMPLEMENTATION>::SetException(std::exception_ptr exceptionPtr)
     {
-        this->exceptionPtr = exceptionPtr;
-        this->hasError;
+        this->CoServiceBase<SERVICE_IMPLEMENTATION>::exceptionPtr = exceptionPtr;
+        this->CoServiceBase<SERVICE_IMPLEMENTATION>::hasError = true;
         CoServiceBase<SERVICE_IMPLEMENTATION>::OnResume();
     }
     template <IsVoidCoServiceImplementation SERVICE_IMPLEMENTATION>
     void CoService<SERVICE_IMPLEMENTATION>::SetException(std::exception_ptr exceptionPtr)
     {
-        this->exceptionPtr = exceptionPtr;
-        this->hasError;
+        this->CoServiceBase<SERVICE_IMPLEMENTATION>::exceptionPtr = exceptionPtr;
+        this->CoServiceBase<SERVICE_IMPLEMENTATION>::hasError = true;
         CoServiceBase<SERVICE_IMPLEMENTATION>::OnResume();
     }
 

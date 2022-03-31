@@ -5,6 +5,7 @@
 #include <coroutine>
 #include <condition_variable>
 
+#ifndef DOXYGEN
 namespace p2psession
 {
 
@@ -71,3 +72,5 @@ namespace p2psession
     };
 
 } // namespace
+
+#endif

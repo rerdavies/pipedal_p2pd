@@ -59,13 +59,8 @@ Task<> CoFastWriter(std::unique_ptr<AsyncFile> writer, size_t lengthBytes,bool t
         size_t thisTime = lengthBytes;
         if (thisTime > sizeof(buffer)) thisTime = sizeof(buffer);
 
-        for (ssize_t offset = 0; offset < thisTime; /**/)
-        {
-            ssize_t nWritten = co_await writer->CoWrite(buffer+offset,sizeof(buffer)-offset);
-            lengthBytes -= nWritten;
-            offset += nWritten;
-
-        }
+        co_await writer->CoWrite(buffer, thisTime);
+        lengthBytes -= thisTime;
     }
     writer->Close();
     co_return;
@@ -150,9 +145,9 @@ Task<> CoWriteFastReadSlow()
         std::unique_ptr<AsyncFile> writer;
         AsyncFile::CreateSocketPair(&reader, &writer);
 
-        std::unique_ptr<Task<>> task = 
-           std::make_unique<Task<>>(CoFastWriter(std::move(writer),TEST_BYTES,false));
-        CoDispatcher::CurrentDispatcher().StartThread(std::move(task));
+        CoDispatcher::CurrentDispatcher().StartThread(
+            CoFastWriter(std::move(writer),TEST_BYTES,false)
+        );
 
         co_await CoSlowReader(std::move(reader),TEST_BYTES,false);
     }
@@ -175,8 +170,7 @@ Task<> CoReadFastWriteSlowTest()
         std::unique_ptr<AsyncFile> writer;
         AsyncFile::CreateSocketPair(&reader, &writer);
 
-        std::unique_ptr<Task<>> task = std::make_unique<Task<>>(CoSlowWriter(std::move(writer),true));
-        CoDispatcher::CurrentDispatcher().StartThread(std::move(task));
+        CoDispatcher::CurrentDispatcher().StartThread(CoSlowWriter(std::move(writer),true));
 
         co_await CoFastReader(std::move(reader),true);
     }
@@ -206,7 +200,6 @@ void ReadWriteTest()
 
 int main(int argc, char **argv)
 {
-
     ReadWriteTest();
     return 0;
 }

@@ -4,7 +4,6 @@
 
 #include "ss.h"
 #include "stddef.h"
-#include "wpa_ctrl.h"
 #include "ss.h"
 #include "stddef.h"
 #include <string_view>
@@ -12,6 +11,7 @@
 using namespace p2psession;
 using namespace std;
 
+#ifdef JUNK
 SessionManager::SessionManager()
 {
     this->log = std::make_shared<ConsoleLog>();
@@ -64,38 +64,11 @@ inline void SessionManager::LogError(const std::string_view &tag, const std::str
 }
 void SessionManager::Open(const std::string &path)
 {
-    if (ctrl)
-    {
-        ThrowError("Open: Already open.");
-    }
-    ctrl = wpa_ctrl_open(path.c_str());
-    if (!ctrl)
-    {
-        ThrowError(SS("Open: Can't open " << path));
-    }
-    int result;
-    result = wpa_ctrl_attach(ctrl);
-    if (result != 0)
-    {
-        if (result == -2)
-            ThrowError("Open: Attach timed out.");
-        ThrowError("Open: Failed to attach.");
-    }
     attached = true;
 }
 
 void SessionManager::Close()
 {
-    if (ctrl)
-    {
-        if (attached)
-        {
-            wpa_ctrl_detach(ctrl);
-            attached = false;
-        }
-        wpa_ctrl_close(ctrl);
-        ctrl = nullptr;
-    }
 }
 
 SessionManager::~SessionManager()
@@ -339,3 +312,4 @@ MessageAwaiter SessionManager::CoWaitForMessage(WpaEventMessage message, int64_t
     std::vector<WpaEventMessage> messages;
     return CoWaitForMessages(messages, timeoutMs);
 }
+#endif

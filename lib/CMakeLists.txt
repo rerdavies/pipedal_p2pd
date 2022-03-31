@@ -2,45 +2,44 @@
 #
 cmake_minimum_required (VERSION 3.9)
 
-add_compile_definitions(CONFIG_CTRL_IFACE)
 
 add_library(p2psession SHARED
 
 ./p2psession/WpaConstants.h
 ./p2psession/CoTask.h
 ./p2psession/WpaEvent.h
-./p2psession/SessionLog.h
+./p2psession/Os.h
+./p2psession/CoService.h
+./p2psession/AsyncFile.h
 ./p2psession/WpaMessages.h
 ./p2psession/MessageAwaiter.h
 ./p2psession/Log.h
-./p2psession/xxxDispatcher.h
+./p2psession/AsyncIo.h
 ./p2psession/Fifo.h
 ./p2psession/P2pException.h
-./p2psession/SessionManager.h
-./p2psession/WpaOs.h
+./p2psession/WpaCliWrapper.h
+./p2psession/AsyncExec.h
+./p2psession/CoEvent.h
 
-./common/includes.h
-./common/os_unix.c
-./common/common.c
-./common/os.h
-./common/common.h
-./common/build_config.h
-./common/wpa_ctrl.c
-./common/wpa_ctrl.h
+./CoTaskSchedulerPool.cpp
 
-./WpaOsLinux.cpp
 ./ss.h
 ./CoTask.cpp
+./CoEvent.cpp
+./WpaEvent.cpp
 ./CoTaskSchedulerPool.h
-./CoTaskSchedulerPool.cpp
+./CoService.cpp
+./CoTaskTest.cpp
+./AsyncIoLinux.cpp
+./AsyncFile.cpp
 ./SessionManager.cpp
 ./WpaMessages.cpp
-./WpaEvent.cpp
-
+./WpaCliWrapper.cpp
+./AsyncExec.cpp
+./OsLinux.cpp
 
 )
 
-target_compile_definitions(p2psession PRIVATE CONFIG_CTRL_IFACE_UNIX CONFIG_CTRL_IFACE)
 
 target_include_directories(p2psession PRIVATE "common" )
 
@@ -48,36 +47,51 @@ target_link_libraries(p2psession PRIVATE pthread)
 
 
 add_executable(coTaskTest
-    CoTaskSchedulerPool.cpp CoTaskSchedulerPool.h
-    CoTask.cpp p2psession/CoTask.h
-    p2psession/Log.h
     CoTaskTest.cpp
 )
 
-target_link_libraries(coTaskTest pthread)
+
+target_link_libraries(coTaskTest pthread p2psession)
+
+add_test(NAME CoTaskTest COMMAND coTaskTest)
+
 
 add_executable(coServiceTest
-    CoTaskSchedulerPool.cpp CoTaskSchedulerPool.h
-    CoTask.cpp p2psession/CoTask.h
-    p2psession/Log.h
-    p2psession/CoService.h
     CoServiceTest.cpp
 )
 
-target_link_libraries(coServiceTest pthread)
+target_link_libraries(coServiceTest pthread p2psession)
 
+add_test(NAME CoServiceTest COMMAND coServiceTest)
 
 add_executable(asyncIoTest
-    CoTaskSchedulerPool.cpp CoTaskSchedulerPool.h
-    CoTask.cpp p2psession/CoTask.h
-    AsyncFile.cpp p2psession/AsyncFile.h
-    AsyncIoLinux.cpp p2psession/AsyncIo.h
-    p2psession/Log.h
     AsyncIoTest.cpp
 )
 
-target_link_libraries(asyncIoTest pthread)
+
+target_link_libraries(asyncIoTest pthread p2psession)
+
+add_test(NAME AsyncIoTest COMMAND asyncIoTest)
+
+add_executable(asyncExecTest
+    AsyncExecTest.cpp
+)
+target_link_libraries(asyncExecTest pthread p2psession)
+
+add_test(NAME AsyncExecTest COMMAND asyncExecTest)
 
 
+add_executable(wpaCliTest
+    WpaCliTest.cpp
+)
 
-add_test(CoTaskTest coTaskTest)
+target_link_libraries(wpaCliTest pthread p2psession)
+
+
+add_executable(coEventTest
+    CoEventTest.cpp
+)
+
+target_link_libraries(coEventTest pthread p2psession)
+
+add_test(NAME CoEventTest COMMAND coEventTest)

@@ -18,7 +18,8 @@ add_compile_options("-fcoroutines")
 
 # Include sub-projects.
 add_subdirectory("lib")
-add_subdirectory("wpap2pd")
+add_subdirectory("doxygen")
+# add_subdirectory("wpap2pd")
 
 
 #set(CPACK_GENERATOR "DEB")

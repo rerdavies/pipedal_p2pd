@@ -3,7 +3,6 @@
 #include <string>
 #include <string_view>
 #include <functional>
-#include <functional>
 #include "WpaEvent.h"
 #include "WpaMessages.h"
 #include "CoTask.h"
@@ -11,8 +10,7 @@
 #include <memory>
 #include "MessageAwaiter.h"
 
-struct wpa_ctrl;
-
+#ifdef JUNK
 namespace p2psession
 {
 
@@ -83,5 +81,7 @@ namespace p2psession
 
         struct wpa_ctrl *ctrl = nullptr;
         bool attached = false;
+ 
     };
 }
+#endif

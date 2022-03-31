@@ -42,10 +42,9 @@ namespace p2psession {
     public:
         P2pTimeoutException()
         {
-
         }
         const char*what() const noexcept {
-            return "Task timed out.";
+            return "Timed out.";
         }
 
     };

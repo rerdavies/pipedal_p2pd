@@ -14,6 +14,11 @@
 #include <condition_variable>
 #include <list>
 
+
+// ignoring the results of [[nodiscard]] Task<> generates an error.
+#pragma GCC diagnostic error "-Wunused-result"
+
+
 namespace p2psession
 {
 
@@ -25,20 +30,26 @@ namespace p2psession
     template <>
     struct Task<>;
 
+    constexpr std::chrono::milliseconds NO_TIMEOUT = std::chrono::milliseconds(-1);
 
 
     // --- Exceptions ---
 
-    class CoException
+    class CoException: public std::exception
     {
     public:
+        using base = std::exception;
+
         CoException() {}
-        virtual const char *what() { return "CoException"; }
+        virtual const char *what() const noexcept = 0;
+
     };
     class CoCancelledException : public CoException
     {
     public:
-        CoCancelledException() {}
+        using base = CoException;
+        CoCancelledException()
+            {}
 
         virtual const char *what() const noexcept
         {
@@ -48,11 +59,13 @@ namespace p2psession
     class CoTimedOutException : public CoException
     {
     public:
+        using base = CoException;
+        
         CoTimedOutException() {}
 
         virtual const char *what() const noexcept
         {
-            return "Cancelled.";
+            return "Timed out.";
         }
     };
 
@@ -89,8 +102,9 @@ namespace p2psession
 
     public:
         static CoDispatcher &CurrentDispatcher();
-
         static void DestroyDispatcher();
+
+        CoDispatcher*GetForegroundDispatcher() { return pForegroundDispatcher; }
 
         static TimeMs Now();
 
@@ -113,8 +127,9 @@ namespace p2psession
         void PumpUntilIdle();
 
         void MessageLoop();
+        void MessageLoop(Task<> threadMain);
 
-        void Quit() { this->quit = true;}
+        void Quit(); 
 
         void SetThreadPoolSize(size_t threads);
 
@@ -140,11 +155,10 @@ namespace p2psession
             static size_t GetNumberOfDeadThreads();
         };
 
-        void Start(std::unique_ptr<Task<>> task);
-        void StartThread(std::unique_ptr<Task<>> task);
+        void StartThread(Task<> task);
 
     private:
-        std::list<std::unique_ptr<Task<>>> coroutineThreads;        
+        std::list<Task<>> coroutineThreads;        
         void ScavengeTasks();
         bool inMessageLoop = false;
         bool quit = false;
@@ -220,6 +234,7 @@ namespace p2psession
         // The return type of a coroutine must contain a nested struct or type alias called `promise_type`
         struct promise_type
         {
+            /********************DATA ************************/
             // Keep a coroutine handle referring to the parent coroutine if any. That is, if we
             // co_await a coroutine within another coroutine, this handle will be used to continue
             // working from where we left off.
@@ -230,6 +245,10 @@ namespace p2psession
 
             // Invoked when we first enter a coroutine. We initialize the precursor handle
             // with a resume point from where the task is ultimately suspended
+
+            // This handle is assigned to when the coroutine itself is suspended (see await_suspend)
+            std::coroutine_handle<promise_type> handle;
+
             Task get_return_object() noexcept
             {
                 return {std::coroutine_handle<promise_type>::from_promise(*this)};
@@ -311,12 +330,14 @@ namespace p2psession
             // the final_suspend awaiter on the promise_type above for where this gets used
             handle.promise().precursor = coroutine;
         }
+        // This handle is assigned to when the coroutine itself is suspended (see await_suspend above)
+        std::coroutine_handle<promise_type> handle;
 
         T GetResult();
 
-        // This handle is assigned to when the coroutine itself is suspended (see await_suspend above)
-        std::coroutine_handle<promise_type> handle;
     };
+
+    inline CoDispatcher & Dispatcher() { return CoDispatcher::CurrentDispatcher(); }
 
     template <>
     struct Task<>
@@ -361,7 +382,7 @@ namespace p2psession
                     // Returning a coroutine handle here resumes the coroutine it refers to (needed for
                     // continuation handling). If we wanted, we could instead enqueue that coroutine handle
                     // instead of immediately resuming it by enqueuing it and returning void.
-                    std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h)
+                    std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept
                     {
                         auto precursor = h.promise().precursor;
                         if (precursor)
@@ -394,14 +415,7 @@ namespace p2psession
             auto promise = handle.promise();
             if (promise.unhandledException)
             {
-                try
-                {
-                    std::rethrow_exception(promise.unhandledException);
-                }
-                catch (std::exception &e)
-                {
-                    std::cout << "Got it " << std::endl;
-                }
+                std::rethrow_exception(promise.unhandledException);
             }
         }
 
