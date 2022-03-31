@@ -85,6 +85,7 @@ private:
         std::unique_ptr<EpollEvent> event = std::make_unique<EpollEvent>(handle,fileDescriptor,callback);
 
         struct epoll_event epollEvent;
+        memset(&epollEvent,0,sizeof(epollEvent));
         epollEvent.data.ptr = event.get();
         epollEvent.events = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLET ;
         epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fileDescriptor, &epollEvent);

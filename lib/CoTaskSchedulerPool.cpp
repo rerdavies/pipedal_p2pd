@@ -1,27 +1,37 @@
 #include "CoTaskSchedulerPool.h"
 #include <functional>
 #include "ss.h"
+#include "p2psession/Os.h"
 
 using namespace p2psession;
 
 CoTaskSchedulerPool::CoTaskSchedulerPool(CoDispatcher *pForegroundDispatcher)
     : pForegroundDispatcher(pForegroundDispatcher)
 {
-    Resize(1);
+    int nCpus = std::thread::hardware_concurrency();
+    if (nCpus == 0)
+        nCpus = 3;
+    int nThreads = nCpus - 1;
+    if (nThreads < 1)
+        nThreads = 1;
+    Resize(nThreads);
 }
 CoTaskSchedulerPool::~CoTaskSchedulerPool()
 {
     DestroyAllThreads();
+    Log().Debug("CoTaskSchedulerPool deleted.");
+    pForegroundDispatcher = nullptr;
 }
 
 void CoTaskSchedulerPool::ScavengeDeadThreads()
 {
     if (this->deadThreads.size() != 0)
     {
-        std::unique_lock lock {threadTerminatedMutex};
+        std::unique_lock lock{threadTerminatedMutex};
         for (auto thread : deadThreads)
         {
             delete thread;
+            Log().Debug("Thread terminated.");
         }
         deadThreads.resize(0);
     }
@@ -38,7 +48,7 @@ void CoTaskSchedulerPool::DestroyAllThreads()
 
     while (true)
     {
-        std::unique_lock lock{threadTerminatedMutex};
+        std::unique_lock lock{schedulerMutex};
 
         for (auto thread : deadThreads)
         {
@@ -49,7 +59,7 @@ void CoTaskSchedulerPool::DestroyAllThreads()
         if (threads.size() == 0)
             break;
 
-        this->threadTerminated.wait(lock);
+        this->threadTerminatedCv.wait(lock);
     }
 }
 
@@ -80,6 +90,7 @@ void CoTaskSchedulerThread::ThreadProc()
 {
     try
     {
+        os::SetThreadBackgroundPriority();
         CoDispatcher::pInstance = (new CoDispatcher(pForegroundDispatcher, this->pool));
         while (true)
         {
@@ -95,6 +106,7 @@ void CoTaskSchedulerThread::ThreadProc()
         pForegroundDispatcher->Log().Error(SS("Worker thread terminated abnormally. (" << e.what() << ")"));
     }
     pool->OnThreadTerminated(this);
+    CoDispatcher::RemoveThreadDispatcher();
 }
 
 void CoTaskSchedulerPool::Post(std::coroutine_handle<> handle)
@@ -142,15 +154,15 @@ void CoTaskSchedulerPool::OnThreadTerminated(CoTaskSchedulerThread *thread)
             {
                 found = true;
                 threads.erase(i);
+                Log().Debug("Thread terminating.");
                 break;
             }
         }
-    }
-    if (found)
-    {
-        std::unique_lock lock{threadTerminatedMutex};
-        deadThreads.push_back(thread); // for cleanup.
-        threadTerminated.notify_all();
+        if (found)
+        {
+            deadThreads.push_back(thread); // for cleanup.
+            threadTerminatedCv.notify_one();
+        }
     }
 }
 bool CoTaskSchedulerPool::IsDone()

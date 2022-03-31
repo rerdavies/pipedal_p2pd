@@ -197,5 +197,7 @@ void ReadWriteTest()
 int main(int argc, char **argv)
 {
     ReadWriteTest();
+
+    Dispatcher().DestroyDispatcher();
     return 0;
 }

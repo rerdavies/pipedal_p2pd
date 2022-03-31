@@ -58,7 +58,8 @@ namespace p2psession
         std::vector<CoTaskSchedulerThread *> threads;
         std::vector<CoTaskSchedulerThread *> deadThreads;
         void DestroyAllThreads();
-
+    
+        ILog &Log() const { return pForegroundDispatcher->Log(); }
 
 
         std::mutex schedulerMutex;
@@ -67,7 +68,7 @@ namespace p2psession
         void OnThreadTerminated(CoTaskSchedulerThread*thread);
 
         std::mutex threadTerminatedMutex;
-        std::condition_variable threadTerminated;
+        std::condition_variable threadTerminatedCv;
         Fifo<std::coroutine_handle<>> handleQueue;
     };
 

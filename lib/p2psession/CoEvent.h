@@ -414,7 +414,7 @@ namespace p2psession
     {
         co_await pushCv.Wait(
             timeout,
-            [this, &value]() {
+            [this, value]() {
                 if (queue.size() == this->maxLength)
                 {
                     queueFull = true;
@@ -433,7 +433,7 @@ namespace p2psession
     {
         co_await pushCv.Wait(
             timeout,
-            [this, &value]() {
+            [this, value = std::move(value)]() {
                 if (queue.size() == this->maxQueueSize)
                 {
                     queueFull = true;

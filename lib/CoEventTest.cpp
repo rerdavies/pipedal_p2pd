@@ -83,7 +83,7 @@ public:
         cout << state << "," << condVariable << endl;
         assert(state == 8);
 
-        Dispatcher().Quit();
+        Dispatcher().PostQuit();
     }
 };
 void ConditionVariableTest()
@@ -144,7 +144,7 @@ class CMutexTest
             }
             mutex.Unlock();
         }
-        Dispatcher().Quit();
+        Dispatcher().PostQuit();
     }
 
 public:
@@ -178,7 +178,7 @@ public:
             {
                 co_await CoDelay(111ms);
             }
-            queue.Push(value);
+            co_await queue.Push(value);
         }
         queue.Close();
     }
@@ -253,4 +253,7 @@ int main(int argc, char **argv)
 
     MutexTest();
     ConditionVariableTest();
+    Dispatcher().DestroyDispatcher();
+    
+    return 0;
 }

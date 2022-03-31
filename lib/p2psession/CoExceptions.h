@@ -7,7 +7,7 @@ namespace p2psession {
     {
     public:
         using base = std::exception;
-
+        virtual ~CoException() { }
         CoException() {}
         virtual const char *what() const noexcept = 0;
 
@@ -52,6 +52,12 @@ namespace p2psession {
          */
         [[noreturn]] static void ThrowErrno();
 
+        CoIoException(const CoIoException & other)
+        :what_(other.what_),errNo_(other.errNo_) {}
+        
+        virtual ~CoIoException() {
+
+        }
         /**
          * @brief Construct a new Async Io Exception object
          * 

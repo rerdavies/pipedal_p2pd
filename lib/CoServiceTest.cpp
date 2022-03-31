@@ -175,5 +175,7 @@ int main(int argc, char**argv)
 {
     // TestServiceTimeout();
     TestSimpleService();
+
+    Dispatcher().DestroyDispatcher();
     return 0;
 }

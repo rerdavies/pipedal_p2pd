@@ -31,14 +31,15 @@ CoTask<> CoForwardOutput(AsyncFile &output)
             {
                 break;
             };
-            cout << line << endl;
+            cout << ": " << line << endl;
         }
     }
     catch (const std::exception &e)
     {
+        cout << "ForwardOutput: " << e.what() << endl;
     }
     cout << "Output done." << endl;
-    CoDispatcher::CurrentDispatcher().Quit();
+    CoDispatcher::CurrentDispatcher().PostQuit();
 }
 int main(int argc, char **argv)
 {
@@ -67,4 +68,8 @@ int main(int argc, char **argv)
     {
         cout << "Error: " << e.what() << endl;
     }
+
+    Dispatcher().DestroyDispatcher();
+    return 0;
+
 }

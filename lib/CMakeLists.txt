@@ -2,6 +2,7 @@
 #
 cmake_minimum_required (VERSION 3.9)
 
+include(CTest)
 
 add_library(p2psession SHARED
 
@@ -43,6 +44,16 @@ add_library(p2psession SHARED
 target_include_directories(p2psession PRIVATE "common" )
 
 target_link_libraries(p2psession PRIVATE pthread)
+
+
+add_executable(taskTest
+    TaskTest.cpp
+)
+
+target_link_libraries(taskTest pthread p2psession)
+
+add_test(NAME TaskTest COMMAND taskTest)
+
 
 
 add_executable(coTaskTest
@@ -94,3 +105,19 @@ add_executable(coEventTest
 target_link_libraries(coEventTest pthread p2psession)
 
 add_test(NAME CoEventTest COMMAND coEventTest)
+
+
+add_executable(shutdownTest
+    ShutdownTest.cpp
+)
+
+target_link_libraries(shutdownTest pthread p2psession)
+
+add_test(NAME ShutdownTest COMMAND shutdownTest)
+
+# test_memcheck target: run valgrind memcheck
+add_custom_target(test_memcheck
+    COMMAND ${CMAKE_CTEST_COMMAND} 
+        --force-new-ctest-process --test-action memcheck
+    COMMAND cat "${CMAKE_BINARY_DIR}/Testing/Temporary/MemoryChecker.*.log"
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")

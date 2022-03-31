@@ -229,3 +229,8 @@ void p2psession::os::SetFileNonBlocking(int file_fd,bool nonBlocking)
     }
     fcntl(file_fd,F_SETFL,statusFlags);
 }
+
+
+void p2psession::os::SetThreadBackgroundPriority() {
+    nice(1);
+}

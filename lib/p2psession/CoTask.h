@@ -15,10 +15,8 @@
 #include <list>
 #include "CoExceptions.h"
 
-
 // ignoring the results of [[nodiscard]] Task<> generates an error.
 #pragma GCC diagnostic error "-Wunused-result"
-
 
 namespace p2psession
 {
@@ -32,8 +30,6 @@ namespace p2psession
     struct CoTask<>;
 
     constexpr std::chrono::milliseconds NO_TIMEOUT = std::chrono::milliseconds(-1);
-
-
 
     template <typename T, typename RETURN_TYPE>
     concept Awaitable = requires(T a, std::coroutine_handle<> h)
@@ -70,7 +66,7 @@ namespace p2psession
         static CoDispatcher &CurrentDispatcher();
         static void DestroyDispatcher();
 
-        CoDispatcher*GetForegroundDispatcher() { return pForegroundDispatcher; }
+        CoDispatcher *GetForegroundDispatcher() { return pForegroundDispatcher; }
 
         static TimeMs Now();
 
@@ -79,7 +75,6 @@ namespace p2psession
         void PostDelayed(TimeMs delay, const std::coroutine_handle<> &handle);
         uint64_t PostDelayedFunction(TimeMs delay, std::function<void(void)> fn);
         bool CancelDelayedFunction(uint64_t timerHandle);
-
 
         bool GetNextTimer(CoDispatcher::TimeMs *pResult) const;
         void SleepFor(TimeMs delay);
@@ -93,9 +88,9 @@ namespace p2psession
         void PumpUntilIdle();
 
         void MessageLoop();
-        void MessageLoop(CoTask<> threadMain);
+        void MessageLoop(CoTask<> &&threadMain);
 
-        void Quit(); 
+        void PostQuit();
 
         void SetThreadPoolSize(size_t threads);
 
@@ -104,10 +99,11 @@ namespace p2psession
             return this == pForegroundDispatcher;
         }
 
-        ILog &Log() { return *(log.get()); }
+        ILog &Log() const { return *(log.get()); }
 
         void SetLog(const std::shared_ptr<ILog> &log)
         {
+            std::lock_guard lock{gLogMutex}; // protect the shared ptr instance.
             this->log = log;
         }
 
@@ -121,19 +117,21 @@ namespace p2psession
             static size_t GetNumberOfDeadThreads();
         };
 
-        void StartThread(CoTask<> task);
+        void StartThread(CoTask<> &&task);
 
     private:
-        std::list<CoTask<>> coroutineThreads;        
+        std::list<CoTask<>> coroutineThreads;
         void ScavengeTasks();
         bool inMessageLoop = false;
         bool quit = false;
         void PumpMessageNotifyOne();
         void PumpMessageWaitOne();
         uint64_t nextTimerHandle = 0;
+        static std::mutex gLogMutex;
         std::shared_ptr<ILog> log = std::make_shared<ConsoleLog>();
         friend class CoTaskSchedulerPool;
         friend class CoTaskSchedulerThread;
+        static void RemoveThreadDispatcher();
 
         std::mutex pumpMessageMutex;
         std::condition_variable pumpMessageConditionVariable;
@@ -166,8 +164,6 @@ namespace p2psession
             }
         };
 
-
-
         std::priority_queue<CoroutineTimerEntry, std::vector<CoroutineTimerEntry>, TeLess> coroutineTimerQueue;
 
         struct TeFnLess
@@ -180,7 +176,7 @@ namespace p2psession
         };
         std::mutex delayedFunctionMutex;
 
-        // Order N^+N insertion+delete. Priority queue is N log(N) insert, but still N^2+N delete. 
+        // Order N^+N insertion+delete. Priority queue is N log(N) insert, but still N^2+N delete.
         // The priority isn't really faster, and rebalancing after erase() is awkwardly difficult.
 
         std::list<TimerFunctionEntry> functionTimerQueue;
@@ -195,11 +191,16 @@ namespace p2psession
     struct CoTask<T>;
 
     template <typename T>
-    struct CoTask<T>
+    struct [[nodiscard("Are you missing a co_await?")]] CoTask<T>
     {
+
         // The return type of a coroutine must contain a nested struct or type alias called `promise_type`
         struct promise_type
+
         {
+            ~promise_type()
+            {
+            }
             /********************DATA ************************/
             // Keep a coroutine handle referring to the parent coroutine if any. That is, if we
             // co_await a coroutine within another coroutine, this handle will be used to continue
@@ -280,7 +281,7 @@ namespace p2psession
 
         T await_resume() const
         {
-            auto promise = handle.promise();
+            auto &promise = handle.promise();
             if (promise.unhandledException)
             {
                 std::rethrow_exception(promise.unhandledException);
@@ -297,20 +298,51 @@ namespace p2psession
             handle.promise().precursor = coroutine;
         }
         // This handle is assigned to when the coroutine itself is suspended (see await_suspend above)
-        std::coroutine_handle<promise_type> handle;
+        std::coroutine_handle<promise_type> handle = nullptr;
+
+        CoTask(std::coroutine_handle<promise_type> handle)
+            : handle(handle)
+        {
+        }
+
+        CoTask(CoTask<T> &&other)
+            : handle(std::exchange(other.handle, nullptr))
+        {
+        }
+        CoTask<T> &operator=(CoTask<T> &&other)
+        {
+            if (this != &other)
+            {
+                if (this->handle != nullptr)
+                {
+                    this->handle.destroy();
+                }
+                this->handle = std::exchange(other.handle, nullptr);
+            }
+            return *this;
+        }
+        ~CoTask()
+        {
+            if (handle != nullptr)
+            {
+                handle.destroy();
+            }
+        }
 
         T GetResult();
-
     };
 
-    inline CoDispatcher & Dispatcher() { return CoDispatcher::CurrentDispatcher(); }
+    inline CoDispatcher &Dispatcher() { return CoDispatcher::CurrentDispatcher(); }
 
     template <>
-    struct CoTask<>
+    struct [[nodiscard("Are you missing a co_await?")]] CoTask<>
     {
         // The return type of a coroutine must contain a nested struct or type alias called `promise_type`
         struct promise_type
         {
+            ~promise_type()
+            {
+            }
             // Keep a coroutine handle referring to the parent coroutine if any. That is, if we
             // co_await a coroutine within another coroutine, this handle will be used to continue
             // working from where we left off.
@@ -378,7 +410,7 @@ namespace p2psession
 
         void await_resume() const
         {
-            auto promise = handle.promise();
+            auto &promise = handle.promise();
             if (promise.unhandledException)
             {
                 std::rethrow_exception(promise.unhandledException);
@@ -403,22 +435,45 @@ namespace p2psession
             {
                 await_resume();
                 handle.destroy();
+                handle = nullptr;
                 return;
             }
             catch (std::exception &e)
             {
                 handle.destroy();
+                handle = nullptr;
                 throw;
             }
         }
 
         // This handle is assigned to when the coroutine itself is suspended (see await_suspend above)
-        std::coroutine_handle<promise_type> handle;
+        std::coroutine_handle<promise_type> handle = nullptr;
 
         // To satisfy VS code. Unsure if this is correct in newer C++20 standards.
         CoTask(std::coroutine_handle<promise_type> handle)
         {
             this->handle = handle;
+        }
+
+        CoTask(CoTask<> &&other)
+            : handle(std::exchange(other.handle, nullptr))
+        {
+        }
+        CoTask<> &operator=(CoTask<> &&other)
+        {
+            if (this->handle != nullptr)
+            {
+                this->handle.destroy();
+            }
+            this->handle = std::exchange(other.handle, nullptr);
+            return *this;
+        }
+        ~CoTask()
+        {
+            if (handle != nullptr)
+            {
+                handle.destroy();
+            }
         }
     };
 
@@ -427,6 +482,9 @@ namespace p2psession
     {
         struct awaiter
         {
+            ~awaiter() {
+
+            }
             CoDispatcher::TimeMs delayMs;
             awaiter(CoDispatcher::TimeMs delayMs)
             {
@@ -483,7 +541,7 @@ namespace p2psession
     }
 
     /**************************/
-    
+
     inline CoDispatcher &CoDispatcher::CurrentDispatcher()
     {
         CoDispatcher *pResult = pInstance;
@@ -491,7 +549,6 @@ namespace p2psession
             pResult = pInstance = CoDispatcher::CreateMainDispatcher();
         return *pResult;
     }
-
 
     template <typename T>
     T CoTask<T>::GetResult()
@@ -504,11 +561,13 @@ namespace p2psession
         {
             T value = await_resume();
             handle.destroy();
+            handle = nullptr;
             return value;
         }
         catch (std::exception &e)
         {
             handle.destroy();
+            handle = nullptr;
             throw;
         }
     }

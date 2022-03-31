@@ -10,6 +10,8 @@ using Clock = std::chrono::steady_clock;
 
 thread_local CoDispatcher *CoDispatcher::pInstance;
 
+std::mutex CoDispatcher::gLogMutex;
+
 CoDispatcher::TimeMs CoDispatcher::Now()
 {
 
@@ -116,9 +118,9 @@ void CoDispatcher::PumpUntilIdle()
     }
 }
 
-void CoDispatcher::MessageLoop(CoTask<> threadMain)
+void CoDispatcher::MessageLoop(CoTask<> &&threadMain)
 {
-    StartThread(threadMain);
+    StartThread(std::forward<CoTask<>>(threadMain));
     MessageLoop();
 }
 void CoDispatcher::MessageLoop()
@@ -385,7 +387,16 @@ CoDispatcher::~CoDispatcher()
 {
     if (IsForeground())
     {
-        delete this->pSchedulerPool;
+        if (this->pSchedulerPool)
+        {
+            delete this->pSchedulerPool;
+            this->pSchedulerPool = nullptr;
+        }
+        Log().Debug("Dispatcher deleted.");
+    }
+    {
+        std::lock_guard lock { gLogMutex}; // protect the shared_ptr.
+        this->log = nullptr;
     }
 }
 
@@ -473,18 +484,27 @@ void CoDispatcher::ScavengeTasks()
     }
 }
 
-void CoDispatcher::StartThread(CoTask<> task)
+void CoDispatcher::StartThread(CoTask<> &&task)
 {
     ScavengeTasks();
-    coroutineThreads.insert(coroutineThreads.begin(), task);
+    coroutineThreads.insert(coroutineThreads.begin(), std::move(task));
 }
 
-void CoDispatcher::Quit()
+void CoDispatcher::PostQuit()
 {
     if (!IsForeground())
     {
-        pForegroundDispatcher->Quit();
+        pForegroundDispatcher->PostQuit();
     }   
     this->quit = true;
     this->PumpMessageNotifyOne();
+}
+
+void CoDispatcher::RemoveThreadDispatcher()
+{
+    if (pInstance != nullptr)
+    {
+        delete pInstance;
+        pInstance = nullptr;
+    }
 }

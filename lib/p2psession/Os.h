@@ -78,5 +78,13 @@ namespace p2psession
 
         void SetFileNonBlocking(int file_fd, bool nonBlocking);
 
+        /**
+         * @brief Cause the current thread to run with background scheduling priority.
+         * 
+         * @return * void 
+         */
+          
+        void SetThreadBackgroundPriority();
+
     };
 }

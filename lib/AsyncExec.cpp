@@ -27,7 +27,7 @@ void AsyncExec::Execute(
     AsyncFile remoteStdin,remoteStdout,remoteStderr;
 
     AsyncFile::CreateSocketPair(this->stdin,remoteStdin);
-    //AsyncFile::CreateSocketPair(this->stdout,remoteStdout);
+    AsyncFile::CreateSocketPair(this->stdout,remoteStdout);
     //AsyncFile::CreateSocketPair(this->stderr,remoteStderr);
 
     int rstdIn = remoteStdin.Detach();

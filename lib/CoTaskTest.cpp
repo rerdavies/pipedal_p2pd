@@ -6,31 +6,17 @@
 #include <chrono>
 #include <thread>
 #include <exception>
+#include <cassert>
 
 using namespace p2psession;
 using namespace std;
 
-void assert(bool condition)
-{
-    if (!condition)
-    {
-        throw std::logic_error("Assertion failed.");
-    }
-}
-void assert(bool condition, const std::string &message)
-{
-    if (!condition)
-    {
-        throw std::logic_error("Assertion failed:" + message);
-    }
-}
 void terminate(const std::exception &e)
 {
     cout << "ERROR: " << e.what() << endl;
     cout.flush();
-    std::terminate();    
+    std::terminate();
 }
-
 
 /****** DelayTest ************************************/
 CoTask<int> DelayTask2(int instance)
@@ -228,82 +214,122 @@ CoTask<> VoidTask2()
     throw std::logic_error("Expected exception.");
 }
 
-
 void VoidTest()
 {
     CoTask<> task = VoidTask1();
     task.GetResult();
 
     bool caught = false;
-    try {
+    try
+    {
         CoTask<> task = VoidTask2();
         task.GetResult();
-    } catch (std::exception &e)
+    }
+    catch (std::exception &e)
     {
         caught = true;
         cout << "Expected exception: " << e.what() << endl;
     }
     assert(caught);
-
-
 }
 /***************************************/
 
 CoTask<> CatchTest1()
 {
-    co_await CoDelay(200ms);
-    throw std::logic_error("Expected exception"); 
+    co_await CoDelay(300ms);
+    cout << "          Throwing..." << endl;
+    throw std::logic_error("Expected exception");
     co_return;
 }
 
-CoTask<std::string> CatchTest2()
+CoTask<std::string> CatchIntercept2()
 {
-    try {
+    try
+    {
         co_await CatchTest1();
-    } catch (const std::exception &e)
+    }
+    catch (const std::exception &e)
     {
         co_return e.what();
-
     }
+    co_return "No error thrown.";
+}
+CoTask<std::string> CatchPassThrough2()
+{
+    co_await CatchTest1();
     co_return "No error thrown.";
 }
 
 void CatchTest()
 {
+    cout << "------ CatchTest -----" << endl;
     // ensure that exceptions are propagated through a GetValue call.
+    try
+    {
+        CoTask<std::string> task = CatchPassThrough2();
+        std::string result = task.GetResult();
+        assert (false && "Expecting an exception");
 
-    // This one terminates. It's understandable, given that we're asking GCC to propagate an 
-    // exception under difficult circumstances.
-    try {
-        CoTask<> task = CatchTest1();
-        task.GetResult();
-    } catch (const std::exception &e)
+    }
+    catch (const std::exception &e)
     {
         cout << "Expected exception: " << e.what() << endl;
     }
+
+
+    try
+    {
+        CoTask<> task = CatchTest1();
+        task.GetResult();
+        assert(false && "Exception should have been thrown.");
+    }
+    catch (const std::exception &e)
+    {
+        cout << "Expected exception: " << e.what() << endl;
+    }
+
+    try
+    {
+        CoTask<std::string> task = CatchIntercept2();
+        std::string result = task.GetResult();
+        cout << "exception handled in coroutine: " << result << endl;
+    }
+    catch (const std::exception &e)
+    {
+        assert(false && "Exception was supposed to be caught.");
+    }
+
+    bool caught;
+    
     std::exception_ptr eptr;
-    try {
+    try
+    {
         throw std::invalid_argument("Expected error");
-    } catch (const std::exception & e)
+    }
+    catch (const std::exception &e)
     {
         eptr = std::current_exception();
     }
-    try {
+    try
+    {
         std::rethrow_exception(eptr);
-    } catch (const std::exception & e)
+    }
+    catch (const std::exception &e)
     {
         std::string result = e.what();
         cout << " got it: " << result << endl;
         assert(result == std::string("Expected error"));
     }
 
-    try {
-        CoTask<std::string> task = CatchTest2();
+    try
+    {
+        CoTask<std::string> task = CatchIntercept2();
         std::string result = task.GetResult();
         cout << "exception handled in coroutine: " << result << endl;
-
-    } catch (const std::exception &e)
+    }
+    catch (const std::exception &e)
     {
+        assert(false && "Should have been caught.");
         cout << "Expected exception: " << e.what() << endl;
     }
 }
@@ -311,11 +337,14 @@ void CatchTest()
 int main(int argc, char **argv)
 {
     CatchTest();
-    VoidTest();
-    TestThreadPoolSizing();
-    BackgroundSwitchOnreturnTest();
-    BackgroundNested();
-    BackgroundTest();
-    DelayTest();
-    ConceptsTest();
+    // VoidTest();
+    // TestThreadPoolSizing();
+    // BackgroundSwitchOnreturnTest();
+    // BackgroundNested();
+    // BackgroundTest();
+    // DelayTest();
+    // ConceptsTest();
+
+    Dispatcher().DestroyDispatcher();
+    return 0;
 }
