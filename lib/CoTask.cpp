@@ -1,9 +1,9 @@
-#include "p2psession/CoTask.h"
+#include "cotask/CoTask.h"
 #include <chrono>
 #include "ss.h"
 #include "CoTaskSchedulerPool.h"
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
 using Clock = std::chrono::steady_clock;

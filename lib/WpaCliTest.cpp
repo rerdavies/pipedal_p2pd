@@ -1,16 +1,15 @@
-#include "p2psession/WpaCliWrapper.h"
+#include "cotask/WpaCliWrapper.h"
 
 
-using namespace p2psession;
+using namespace cotask;
 
 
 int main(int argc, char**argv)
 {
-    CoDispatcher&dispatcher = p2psession::Dispatcher();
+    CoDispatcher&dispatcher = cotask::Dispatcher();
     WpaCliWrapper wpaCli;
 
     dispatcher.MessageLoop(wpaCli.Run(argc,argv));
-
 
     return 0;
 }

@@ -1,4 +1,4 @@
-#include "p2psession/Os.h"
+#include "cotask/Os.h"
 #include <vector>
 #include <stdexcept>
 #include "ss.h"
@@ -8,10 +8,10 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <fcntl.h>
-#include "p2psession/CoTask.h"
+#include "cotask/CoTask.h"
 
-using namespace p2psession;
-using namespace p2psession::os;
+using namespace cotask;
+using namespace cotask::os;
 using namespace std;
 
 static vector<string> split(const std::string &value, char splitChar)
@@ -34,21 +34,17 @@ static vector<string> split(const std::string &value, char splitChar)
     return result;
 }
 
-std::filesystem::path p2psession::os::MakeTempFile()
+std::filesystem::path cotask::os::MakeTempFile()
 {
     char templateName[] = "/tmp/co-XXXXXX";
     int fd = mkstemp(templateName);
     close(fd);
     return templateName;
 }
-std::filesystem::path p2psession::os::FindOnPath(const std::string &filename)
+std::filesystem::path cotask::os::FindOnPath(const std::string &filename)
 {
     std::filesystem::path filePath{filename};
     if (filePath.is_absolute())
-    {
-        return filePath;
-    }
-    if (std::filesystem::exists(filePath))
     {
         return filePath;
     }
@@ -62,6 +58,15 @@ std::filesystem::path p2psession::os::FindOnPath(const std::string &filename)
             return file;
         }
     }
+    // Files relative to the cwd. Require './path' for files in the cwd.
+    if (filePath.has_parent_path())
+    {
+        if (std::filesystem::exists(filePath))
+        {
+            return filePath;
+        }
+    }
+
     throw CoFileNotFoundException(SS("File not found: " << filePath));
 }
 
@@ -69,22 +74,35 @@ std::filesystem::path p2psession::os::FindOnPath(const std::string &filename)
 extern char **environ;
 
 #define LEAVE_STDERRR 1
-ProcessId p2psession::os::Spawn(
+ProcessId cotask::os::Spawn(
     const std::filesystem::path &path,
     const std::vector<std::string> &arguments,
+    const std::vector<std::string> &environment,
     int stdinFileDescriptor,
     int stdoutFileDescriptor,
     int stderrFileDescriptor)
 {
     // prepare the argument list before forking.
     const char **pArgs = new const char *[arguments.size() + 2];
-    pArgs[0] = path.c_str();
+    // pArgs[0] = path.c_str();
+    // for (size_t i = 0; i < arguments.size(); ++i)
+    // {
+    //     pArgs[i+1] = arguments[i].c_str();
+    // }
     for (size_t i = 0; i < arguments.size(); ++i)
     {
-        pArgs[i] = arguments[i+1].c_str();
+        pArgs[i] = arguments[i].c_str();
     }
-    std::string dbgPath = os::FindOnPath("bash");
+    pArgs[arguments.size()] = nullptr;
     pArgs[arguments.size()+1] = nullptr;
+    pArgs[arguments.size()+1] = nullptr;
+
+    const char **pEnv = new const char*[environment.size()+1];
+    for (size_t i = 0; i < environment.size(); ++i)
+    {
+        pEnv[i] = environment[i].c_str();
+    }
+    pEnv[environment.size()] = nullptr;
 
     pid_t pid = fork();
     if (pid != 0)
@@ -97,6 +115,7 @@ ProcessId p2psession::os::Spawn(
             close(stderrFileDescriptor);
 
         delete[] pArgs;
+        delete[] pEnv;
         return (ProcessId)pid;
     }
 
@@ -130,17 +149,17 @@ ProcessId p2psession::os::Spawn(
         close(stderrFileDescriptor);
     }
 
-    int result = execv(dbgPath.c_str(), (char *const *)pArgs);
+    int result = execve(path.c_str(), (char *const *)pArgs,(char*const*)pEnv);
     cerr << "Error2: Exec failed." << strerror(errno) << endl;
     exit(EXIT_FAILURE);
 }
 
-void p2psession::os::msleep(int milliseconds)
+void cotask::os::msleep(int milliseconds)
 {
     usleep(milliseconds);
 }
 
-void p2psession::os::KillProcess(ProcessId processId)
+void cotask::os::KillProcess(ProcessId processId)
 {
     pid_t pid = (pid_t)processId;
 
@@ -177,7 +196,7 @@ void p2psession::os::KillProcess(ProcessId processId)
     return;
 }
 
-bool p2psession::os::WaitForProcess(ProcessId processId, int timeoutMs)
+bool cotask::os::WaitForProcess(ProcessId processId, int timeoutMs)
 {
     // waits for three seconds before giving up.
     pid_t pid = (pid_t)(uint64_t)processId; // actual platform-specific PID is stored in the underlying type of the enum.
@@ -217,7 +236,7 @@ bool p2psession::os::WaitForProcess(ProcessId processId, int timeoutMs)
     return false; // terminated abnormally.
 }
 
-void p2psession::os::SetFileNonBlocking(int file_fd,bool nonBlocking)
+void cotask::os::SetFileNonBlocking(int file_fd,bool nonBlocking)
 {
     // remove NONBLOCKING.
     int statusFlags = fcntl(file_fd,F_GETFL);
@@ -231,6 +250,6 @@ void p2psession::os::SetFileNonBlocking(int file_fd,bool nonBlocking)
 }
 
 
-void p2psession::os::SetThreadBackgroundPriority() {
+void cotask::os::SetThreadBackgroundPriority() {
     nice(1);
 }

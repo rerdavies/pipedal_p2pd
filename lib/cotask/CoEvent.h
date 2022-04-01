@@ -7,7 +7,7 @@
 #include "CoService.h"
 #include "AsyncIo.h"
 
-namespace p2psession
+namespace cotask
 {
 #ifndef DOXYGEN
     namespace private_

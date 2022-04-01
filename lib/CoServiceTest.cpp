@@ -1,9 +1,9 @@
-#include "p2psession/CoTask.h"
-#include "p2psession/CoService.h"
+#include "cotask/CoTask.h"
+#include "cotask/CoService.h"
 #include <cassert>
 #include <chrono>
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
 

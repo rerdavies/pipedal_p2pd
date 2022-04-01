@@ -8,8 +8,8 @@ add_executable(wpap2pd
     P2pSessionManager.h P2pSessionManager.cpp
     CommandLineParser.h
 )
-target_include_directories(wpap2pd INTERFACE p2psession)
-target_link_libraries(wpap2pd p2psession)
+target_include_directories(wpap2pd INTERFACE cotask)
+target_link_libraries(wpap2pd cotask)
 target_include_directories(wpap2pd PRIVATE "../lib")
 
 

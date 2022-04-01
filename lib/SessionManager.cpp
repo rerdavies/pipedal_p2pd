@@ -1,6 +1,6 @@
-#include "p2psession/SessionManager.h"
-#include "p2psession/CoExceptions.h"
-#include "p2psession/WpaEvent.h"
+#include "cotask/SessionManager.h"
+#include "cotask/CoExceptions.h"
+#include "cotask/WpaEvent.h"
 
 #include "ss.h"
 #include "stddef.h"
@@ -8,7 +8,7 @@
 #include "stddef.h"
 #include <string_view>
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
 #ifdef JUNK

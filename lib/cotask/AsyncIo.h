@@ -11,7 +11,7 @@
 #include "Log.h"
 #include "CoExceptions.h"
 
-namespace p2psession
+namespace cotask
 {
     class IoWaitable;
 

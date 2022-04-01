@@ -1,9 +1,9 @@
-#include "p2psession/CoEvent.h"
-#include "p2psession/CoExceptions.h"
-#include "p2psession/Os.h"
+#include "cotask/CoEvent.h"
+#include "cotask/CoExceptions.h"
+#include "cotask/Os.h"
 #include <cassert>
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 ////// ConditionVariableTest ///////////////////
 

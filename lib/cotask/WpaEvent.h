@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace p2psession
+namespace cotask
 {
 
     // see https://w1.fi/wpa_supplicant/devel/ctrl_iface_page.html

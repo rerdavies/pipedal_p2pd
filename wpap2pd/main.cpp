@@ -1,5 +1,5 @@
 
-#include "p2psession/CoTask.h"
+#include "cotask/CoTask.h"
 #include "P2pSessionManager.h"
 #include "CommandLineParser.h"
 #include <exception>

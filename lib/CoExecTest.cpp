@@ -1,9 +1,9 @@
-#include "p2psession/WpaCliWrapper.h"
+#include "cotask/WpaCliWrapper.h"
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
-CoTask<> CoForwardInput(AsyncFile &output)
+CoTask<> CoForwardInput(CoFile &output)
 {
     try
     {
@@ -20,7 +20,7 @@ CoTask<> CoForwardInput(AsyncFile &output)
     cout << "Input done." << endl;
 }
 
-CoTask<> CoForwardOutput(AsyncFile &output)
+CoTask<> CoForwardOutput(CoFile &output)
 {
     try
     {
@@ -49,7 +49,7 @@ int main(int argc, char **argv)
     {
         arguments.push_back(argv[i]);
     }
-    AsyncExec asyncExec;
+    CoExec asyncExec;
 
     try
     {

@@ -6,7 +6,7 @@
 #include <exception>
 #include "CoTask.h"
 
-namespace p2psession
+namespace cotask
 {
     using namespace std;  // for std::chrono operator "" extensions.
 

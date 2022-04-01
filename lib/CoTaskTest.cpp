@@ -1,6 +1,6 @@
 // See if we can get the simplest of coroutine examples to work on Gcc 10.
 
-#include "p2psession/CoTask.h"
+#include "cotask/CoTask.h"
 
 #include <iostream>
 #include <chrono>
@@ -8,7 +8,7 @@
 #include <exception>
 #include <cassert>
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
 void terminate(const std::exception &e)
@@ -337,13 +337,13 @@ void CatchTest()
 int main(int argc, char **argv)
 {
     CatchTest();
-    // VoidTest();
-    // TestThreadPoolSizing();
-    // BackgroundSwitchOnreturnTest();
-    // BackgroundNested();
-    // BackgroundTest();
-    // DelayTest();
-    // ConceptsTest();
+    VoidTest();
+    TestThreadPoolSizing();
+    BackgroundSwitchOnreturnTest();
+    BackgroundNestedTest();
+    BackgroundTest();
+    DelayTest();
+    ConceptsTest();
 
     Dispatcher().DestroyDispatcher();
     return 0;

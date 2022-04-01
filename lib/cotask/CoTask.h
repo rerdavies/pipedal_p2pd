@@ -18,7 +18,7 @@
 // ignoring the results of [[nodiscard]] Task<> generates an error.
 #pragma GCC diagnostic error "-Wunused-result"
 
-namespace p2psession
+namespace cotask
 {
 
     // forward declarations.

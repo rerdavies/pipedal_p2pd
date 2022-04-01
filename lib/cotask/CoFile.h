@@ -5,7 +5,7 @@
 #include <sstream>
 
 
-namespace p2psession {
+namespace cotask {
     #ifndef DOXYGEN
     namespace private_ {
         enum WaitOperation {
@@ -26,14 +26,14 @@ namespace p2psession {
      * @brief A file that can be read asynchronously by coroutines.
      * 
      */
-    class AsyncFile: private private_::WaitInterface
+    class CoFile: private private_::WaitInterface
     {
     private:
         int file_fd = -1;
         AsyncIo::EventHandle eventHandle = -1;
         
-        AsyncFile(const AsyncFile &){}; // no copy.
-        AsyncFile( AsyncFile &&){}; // no move.
+        CoFile(const CoFile &){}; // no copy.
+        CoFile( CoFile &&){}; // no move.
     public:
         enum OpenMode
         {
@@ -45,7 +45,7 @@ namespace p2psession {
          * @brief Default constructor.
          * 
          */
-        AsyncFile() { file_fd = -1; }
+        CoFile() { file_fd = -1; }
 
         /**
          * @brief Construct an AsyncFile from a file handle.
@@ -54,8 +54,8 @@ namespace p2psession {
          * 
          * @param file_fd 
          */
-        AsyncFile(int file_fd);
-        ~AsyncFile();
+        CoFile(int file_fd);
+        ~CoFile();
 
         /**
          * @brief Close the file.
@@ -70,7 +70,7 @@ namespace p2psession {
          * @param mode Read, Write, or Append.
          * @return Task<> 
          */
-        CoTask<> CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode mode);
+        CoTask<> CoOpen(const std::filesystem::path &path, CoFile::OpenMode mode);
 
         /**
          * @brief Atach a file handle and take ownership of it.
@@ -164,7 +164,7 @@ namespace p2psession {
          * 
          * @throws CoIoException
          */
-        static void CreateSocketPair(AsyncFile &input, AsyncFile &output);
+        static void CreateSocketPair(CoFile &input, CoFile &output);
         /**
          * @brief Create a pair of std::unique_ptr<AsyncFile>'s that are connected anonymous pipes.
          * 
@@ -174,10 +174,10 @@ namespace p2psession {
          * @throws CoIoException
          */
 
-        static void CreateSocketPair(std::unique_ptr<AsyncFile>*input, std::unique_ptr<AsyncFile> *output)
+        static void CreateSocketPair(std::unique_ptr<CoFile>*input, std::unique_ptr<CoFile> *output)
         {
-            (*input) = std::make_unique<AsyncFile>();
-            (*output) = std::make_unique<AsyncFile>();
+            (*input) = std::make_unique<CoFile>();
+            (*output) = std::make_unique<CoFile>();
             CreateSocketPair(*input->get(),*output->get());
         }
         /**
@@ -188,10 +188,10 @@ namespace p2psession {
          * 
          * @throws CoIoException
          */
-        static void CreateSocketPair(std::shared_ptr<AsyncFile>*input, std::shared_ptr<AsyncFile> *output)
+        static void CreateSocketPair(std::shared_ptr<CoFile>*input, std::shared_ptr<CoFile> *output)
         {
-            (*input) = std::make_shared<AsyncFile>();
-            (*output) = std::make_shared<AsyncFile>();
+            (*input) = std::make_shared<CoFile>();
+            (*output) = std::make_shared<CoFile>();
             CreateSocketPair(*input->get(),*output->get());
         }
 

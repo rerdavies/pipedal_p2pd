@@ -5,7 +5,7 @@
 #include <iostream>
 #include <mutex>
 
-namespace p2psession
+namespace cotask
 {
 
     enum LogLevel

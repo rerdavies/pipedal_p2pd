@@ -1,8 +1,8 @@
 #pragma once
 
-#include "p2psession/SessionManager.h"
+#include "cotask/SessionManager.h"
 
-using namespace p2psession;
+using namespace cotask;
 
 class P2pSessionManager: public SessionManager {
 

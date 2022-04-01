@@ -3,7 +3,7 @@
 #pragma once
 #include "CoExceptions.h"
 
-namespace p2psession
+namespace cotask
 {
     // private implementation.
     // implementation is in SessionManager.cpp.

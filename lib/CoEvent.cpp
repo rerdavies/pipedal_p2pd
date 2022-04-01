@@ -1,8 +1,8 @@
-#include "p2psession/CoEvent.h"
+#include "cotask/CoEvent.h"
 
-using namespace p2psession;
+using namespace cotask;
 
-namespace p2psession
+namespace cotask
 {
     #ifndef DOXYGEN
     namespace private_

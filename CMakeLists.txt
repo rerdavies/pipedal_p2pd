@@ -5,7 +5,7 @@ cmake_minimum_required (VERSION 3.9)
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON")
 
 
-project(p2psession VERSION 0.1.0 DESCRIPTION "P2P Session Manager for wpa_supplicant")
+project(cotask VERSION 0.1.0 DESCRIPTION "P2P Session Manager for wpa_supplicant")
 
 
 include(CTest)

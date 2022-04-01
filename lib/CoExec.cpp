@@ -1,9 +1,9 @@
-#include "p2psession/AsyncExec.h"
-#include "p2psession/Os.h"
+#include "cotask/CoExec.h"
+#include "cotask/Os.h"
 #include <fcntl.h>
 
-using namespace p2psession;
-using namespace p2psession::os;
+using namespace cotask;
+using namespace cotask::os;
 
 static void PrepareFile(int file)
 {
@@ -18,17 +18,37 @@ static void PrepareFile(int file)
     fcntl(file,F_SETFL,statusFlags);
 
 }
-void AsyncExec::Execute(
+
+
+// see man 7 environ! This is legitimate.
+extern char **environ;
+
+void CoExec::Execute(
     const std::filesystem::path &pathName,
     const std::vector<std::string> &arguments
+)
+{
+    std::vector<std::string> environment;
+    for (char**p = environ; *p != nullptr; ++p)
+    {
+        environment.push_back(*p);
+    }
+    Execute(pathName,arguments,environment);
+}
+
+void CoExec::Execute(
+    const std::filesystem::path &pathName,
+    const std::vector<std::string> &arguments,
+    const std::vector<std::string> &environment
+
     )
 {
     auto fullPath = FindOnPath(pathName);
-    AsyncFile remoteStdin,remoteStdout,remoteStderr;
+    CoFile remoteStdin,remoteStdout,remoteStderr;
 
-    AsyncFile::CreateSocketPair(this->stdin,remoteStdin);
-    AsyncFile::CreateSocketPair(this->stdout,remoteStdout);
-    //AsyncFile::CreateSocketPair(this->stderr,remoteStderr);
+    CoFile::CreateSocketPair(this->stdin,remoteStdin);
+    CoFile::CreateSocketPair(this->stdout,remoteStdout);
+    CoFile::CreateSocketPair(this->stderr,remoteStderr);
 
     int rstdIn = remoteStdin.Detach();
     PrepareFile(rstdIn);
@@ -37,14 +57,14 @@ void AsyncExec::Execute(
     int rstdErr = remoteStderr.Detach();
     PrepareFile(rstdErr);
 
-    this->processId = os::Spawn(fullPath,arguments,rstdIn,rstdOut);
+    this->processId = os::Spawn(fullPath,arguments,environment,rstdIn,rstdOut,rstdErr);
 }
-AsyncExec::~AsyncExec()
+CoExec::~CoExec()
 {
     Kill();
 }
 
-bool AsyncExec::Wait(int timeoutMs)
+bool CoExec::Wait(int timeoutMs)
 {
     int result = -2;
     if (this->processId != os::ProcessId::Invalid)
@@ -54,7 +74,7 @@ bool AsyncExec::Wait(int timeoutMs)
     }
     return result;
 }
-void AsyncExec::Kill()
+void CoExec::Kill()
 {
     if (this->processId != os::ProcessId::Invalid)
     {

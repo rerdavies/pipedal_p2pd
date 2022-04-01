@@ -1,7 +1,7 @@
-#include"p2psession/WpaMessages.h"
+#include"cotask/WpaMessages.h"
 #include <unordered_map>
 
-using namespace p2psession;
+using namespace cotask;
 
 static std::unordered_map<std::string, WpaEventMessage> stringToWpaEventMessage {{
     {"UNKNOWN", WpaEventMessage::WPA_UNKOWN_MESSAGE},
@@ -407,7 +407,7 @@ static std::unordered_map<std::string, WpaEventMessage> stringToWpaEventMessage 
         {"AP-MGMT-FRAME-RECEIVED", WpaEventMessage::AP_MGMT_FRAME_RECEIVED},
 }};
 
-WpaEventMessage p2psession::GetWpaEventMessage(const std::string &message)
+WpaEventMessage cotask::GetWpaEventMessage(const std::string &message)
 {
     auto result = stringToWpaEventMessage.find(message);
     if (result == stringToWpaEventMessage.end())

@@ -1,6 +1,6 @@
-#include "p2psession/CoTask.h"
+#include "cotask/CoTask.h"
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
 CoTask<> TestTask2()

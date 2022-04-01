@@ -1,8 +1,8 @@
-#include "p2psession/WpaCliWrapper.h"
-#include "p2psession/Os.h"
-#include "p2psession/CoEvent.h"
+#include "cotask/WpaCliWrapper.h"
+#include "cotask/Os.h"
+#include "cotask/CoEvent.h"
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
 
@@ -22,24 +22,65 @@ void WpaCliWrapper::Execute(const std::string &deviceName)
 
 CoTask<> WpaCliWrapper::ProcessMessages()
 {
+    Dispatcher().StartThread(ReadMessages());
+    co_await WriteMessages();
+}
+
+CoTask<> WpaCliWrapper::WriteMessages()
+{
+    co_await Stdin().CoWriteLine("scan");
+    co_return;
+}
+CoTask<> WpaCliWrapper::ReadMessages() {
     WpaEvent event;
     std::string line;
+    try {
     while (true)
     {
 
-        bool result =  co_await Stdin().CoReadLine(&line);
+        bool result =  co_await Stdout().CoReadLine(&line);
         if (!result) break; // eof.
 
         if (traceMessages)
         {
-            cout << line << endl;
+            cout << ": " << line << endl;
         }
         if (event.ParseLine(line.c_str()))
         {
             OnEvent(event);
         }
     }
+    } catch (const std::exception&e)
+    {
+
+    }
+    cout << "Process terminated." << endl;
 }
+CoTask<> WpaCliWrapper::ReadErrors() {
+    WpaEvent event;
+    std::string line;
+    try {
+    while (true)
+    {
+
+        bool result =  co_await Stderr().CoReadLine(&line);
+        if (!result) break; // eof.
+
+        if (traceMessages)
+        {
+            cout << "* " << line << endl;
+        }
+        if (event.ParseLine(line.c_str()))
+        {
+            OnEvent(event);
+        }
+    }
+    } catch (const std::exception&e)
+    {
+
+    }
+}
+
 
 CoTask<> WpaCliWrapper::Run(int argc, char **argv)
 {
@@ -67,3 +108,44 @@ CoTask<> WpaCliWrapper::Run(int argc, char **argv)
 
     co_return;
 }
+
+CoTask<std::vector<std::string>> WpaCliWrapper::ReadToPrompt(std::chrono::milliseconds timeout)
+{
+    std::vector<std::string> response;
+    while (true)
+    {
+        while (lineBufferHead != lineBufferTail)
+        {
+            char c = lineBuffer[lineBufferHead];
+            if (c == '\n')  {
+                response.push_back(lineResult.str());
+                lineResult.clear();
+                lineResultEmpty = true;
+            } else if (lineResultEmpty && c == '>') {
+                if (lineBufferRecoveringFromTimeout)
+                {
+                    lineBufferRecoveringFromTimeout = true;
+                    response.resize(0);
+                } else {
+                    NotifyPrompting();
+                    co_return response;
+                }
+            } else {
+                lineResultEmpty = false;
+                lineResult << c;
+            }
+        }
+        try {
+            int nRead = co_await Stdin().CoRead(lineBuffer,sizeof(lineBuffer),timeout);
+            lineBufferHead = 0; 
+            lineBufferTail = nRead;
+        } catch (const CoTimedOutException &e)
+        {
+            lineBufferRecoveringFromTimeout = true;
+            throw;
+        }
+    }
+    co_return response;
+}
+
+

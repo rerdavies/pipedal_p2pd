@@ -1,9 +1,9 @@
 #include "CoTaskSchedulerPool.h"
 #include <functional>
 #include "ss.h"
-#include "p2psession/Os.h"
+#include "cotask/Os.h"
 
-using namespace p2psession;
+using namespace cotask;
 
 CoTaskSchedulerPool::CoTaskSchedulerPool(CoDispatcher *pForegroundDispatcher)
     : pForegroundDispatcher(pForegroundDispatcher)

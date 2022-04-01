@@ -1,19 +1,19 @@
-#include "p2psession/AsyncFile.h"
+#include "cotask/CoFile.h"
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
-#include "p2psession/CoService.h"
+#include "cotask/CoService.h"
 #include <functional>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include "p2psession/Os.h"
+#include "cotask/Os.h"
 
-using namespace p2psession;
-using namespace p2psession::private_;
+using namespace cotask;
+using namespace cotask::private_;
 using namespace std;
 
-bool AsyncFile::IsReady(WaitOperation op)
+bool CoFile::IsReady(WaitOperation op)
 {
     switch (op)
     {
@@ -25,7 +25,7 @@ bool AsyncFile::IsReady(WaitOperation op)
         throw std::invalid_argument("Invalid argument.");
     }
 }
-void AsyncFile::SetReadyCallback(WaitOperation op, WaitInterface::callback callbackOnReady)
+void CoFile::SetReadyCallback(WaitOperation op, WaitInterface::callback callbackOnReady)
 {
     std::lock_guard lock { callbackMutex };
 
@@ -41,7 +41,7 @@ void AsyncFile::SetReadyCallback(WaitOperation op, WaitInterface::callback callb
         throw std::invalid_argument("Invalid argument.");
     }
 }
-void AsyncFile::ClearReadyCallback(WaitOperation op)
+void CoFile::ClearReadyCallback(WaitOperation op)
 {
     std::lock_guard lock { callbackMutex };
 
@@ -102,7 +102,7 @@ auto IoWait(WaitOperation op, WaitInterface *waitInterface, std::chrono::millise
             }
             return true;
         }
-        AsyncFile *file;
+        CoFile *file;
         std::chrono::milliseconds timeout;
     };
 
@@ -117,13 +117,13 @@ auto IoWait(WaitOperation op, WaitInterface *waitInterface, std::chrono::millise
     return awaitable;
 }
 
-AsyncFile::AsyncFile(int file_fd)
+CoFile::CoFile(int file_fd)
     : file_fd(file_fd)
 {
     WatchFile(file_fd);
 }
 
-void AsyncFile::WatchFile(int fd)
+void CoFile::WatchFile(int fd)
 {
     if (this->eventHandle != 0)
     {
@@ -159,11 +159,11 @@ void AsyncFile::WatchFile(int fd)
     }
 }
 
-AsyncFile::~AsyncFile()
+CoFile::~CoFile()
 {
     Close();
 }
-void AsyncFile::Close()
+void CoFile::Close()
 {
     if (file_fd != -1)
     {
@@ -173,7 +173,7 @@ void AsyncFile::Close()
     }
 }
 
-void AsyncFile::Attach(int file_fd)
+void CoFile::Attach(int file_fd)
 {
     Close();
     // set O_NON_BLOCKING
@@ -184,7 +184,7 @@ void AsyncFile::Attach(int file_fd)
     this->file_fd = file_fd;
     WatchFile(this->file_fd);
 }
-int AsyncFile::Detach()
+int CoFile::Detach()
 {
     int result = this->file_fd;
     WatchFile(-1);
@@ -193,7 +193,7 @@ int AsyncFile::Detach()
 
     return result;
 }
-CoTask<> AsyncFile::CoOpen(const std::filesystem::path &path, AsyncFile::OpenMode mode)
+CoTask<> CoFile::CoOpen(const std::filesystem::path &path, CoFile::OpenMode mode)
 {
 
     int file_fd = -1;
@@ -219,7 +219,7 @@ CoTask<> AsyncFile::CoOpen(const std::filesystem::path &path, AsyncFile::OpenMod
     co_return;
 }
 
-CoTask<int> AsyncFile::CoRead(void *data, size_t length, std::chrono::milliseconds timeout)
+CoTask<int> CoFile::CoRead(void *data, size_t length, std::chrono::milliseconds timeout)
 {
     int totalRead = 0;
 
@@ -269,7 +269,7 @@ static std::chrono::milliseconds Now()
     return std::chrono::duration_cast<std::chrono::milliseconds>(duration);
 }
 
-CoTask<> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout)
+CoTask<> CoFile::CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout)
 {
     std::chrono::milliseconds expiryTime = Now() + timeout;
     this->writeReady = false;
@@ -302,7 +302,7 @@ CoTask<> AsyncFile::CoWrite(const void *data, size_t length, std::chrono::millis
     }
 }
 
-void AsyncFile::CreateSocketPair(AsyncFile &sender, AsyncFile &receiver)
+void CoFile::CreateSocketPair(CoFile &sender, CoFile &receiver)
 {
     int sv[2];
     // int result = pipe(sv);
@@ -315,13 +315,13 @@ void AsyncFile::CreateSocketPair(AsyncFile &sender, AsyncFile &receiver)
     receiver.Attach(sv[1]);
 }
 
-CoTask<> AsyncFile::CoWriteLine(const std::string&line, std::chrono::milliseconds timeout)
+CoTask<> CoFile::CoWriteLine(const std::string&line, std::chrono::milliseconds timeout)
 {
     co_await CoWrite(line.c_str(),line.length(),timeout);
     char endl = '\n';
     co_await CoWrite(&endl,1,timeout);
 }
-CoTask<bool> AsyncFile::CoReadLine(std::string*result)
+CoTask<bool> CoFile::CoReadLine(std::string*result)
 {
     while (true)
     {

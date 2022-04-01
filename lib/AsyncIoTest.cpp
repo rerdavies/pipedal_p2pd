@@ -1,17 +1,17 @@
-#include "p2psession/CoTask.h"
-#include "p2psession/AsyncIo.h"
+#include "cotask/CoTask.h"
+#include "cotask/AsyncIo.h"
 #include <cassert>
 #include <chrono>
-#include "p2psession/AsyncFile.h"
+#include "cotask/CoFile.h"
 #include "ss.h"
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
 
 //////////////// Read Fast Write Slow  ////////////////////////
 
-CoTask<> CoSlowWriter(std::unique_ptr<AsyncFile> writer, bool trace)
+CoTask<> CoSlowWriter(std::unique_ptr<CoFile> writer, bool trace)
 {
     int i = 0;
     std::string msg;
@@ -39,7 +39,7 @@ CoTask<> CoSlowWriter(std::unique_ptr<AsyncFile> writer, bool trace)
 
 constexpr size_t FAST_WRITE_SIZE = 1024*1024;
 
-CoTask<> CoFastWriter(std::unique_ptr<AsyncFile> writer, size_t lengthBytes,bool trace)
+CoTask<> CoFastWriter(std::unique_ptr<CoFile> writer, size_t lengthBytes,bool trace)
 {
     int i = 0;
     std::string msg;
@@ -62,7 +62,7 @@ CoTask<> CoFastWriter(std::unique_ptr<AsyncFile> writer, size_t lengthBytes,bool
     co_return;
 }
 
-CoTask<> CoSlowReader(std::unique_ptr<AsyncFile> reader, size_t expectedBytes,bool trace)
+CoTask<> CoSlowReader(std::unique_ptr<CoFile> reader, size_t expectedBytes,bool trace)
 {
     char buffer[113];
 
@@ -109,7 +109,7 @@ CoTask<> CoSlowReader(std::unique_ptr<AsyncFile> reader, size_t expectedBytes,bo
     }
 }
 
-CoTask<> CoFastReader(std::unique_ptr<AsyncFile> reader,bool trace)
+CoTask<> CoFastReader(std::unique_ptr<CoFile> reader,bool trace)
 {
     char buffer[1024];
     while (true)
@@ -137,9 +137,9 @@ CoTask<> CoWriteFastReadSlow()
     try
     {
         constexpr size_t TEST_BYTES = 10*1024*1024;
-        std::unique_ptr<AsyncFile> reader;
-        std::unique_ptr<AsyncFile> writer;
-        AsyncFile::CreateSocketPair(&reader, &writer);
+        std::unique_ptr<CoFile> reader;
+        std::unique_ptr<CoFile> writer;
+        CoFile::CreateSocketPair(&reader, &writer);
 
         CoDispatcher::CurrentDispatcher().StartThread(
             CoFastWriter(std::move(writer),TEST_BYTES,false)
@@ -162,9 +162,9 @@ CoTask<> CoReadFastWriteSlowTest()
 
     try
     {
-        std::unique_ptr<AsyncFile> reader;
-        std::unique_ptr<AsyncFile> writer;
-        AsyncFile::CreateSocketPair(&reader, &writer);
+        std::unique_ptr<CoFile> reader;
+        std::unique_ptr<CoFile> writer;
+        CoFile::CreateSocketPair(&reader, &writer);
 
         CoDispatcher::CurrentDispatcher().StartThread(CoSlowWriter(std::move(writer),true));
 

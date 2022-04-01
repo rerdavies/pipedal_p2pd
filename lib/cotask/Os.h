@@ -5,7 +5,7 @@
 #include <vector>
 #include "CoExceptions.h"
 
-namespace p2psession
+namespace cotask
 {
     namespace os
     {
@@ -52,6 +52,7 @@ namespace p2psession
         ProcessId Spawn(
             const std::filesystem::path &path,
             const std::vector<std::string> &arguments,
+            const std::vector<std::string> &environment,
             int stdinFileDescriptor = -1,
             int stdoutFileDescriptor = -1,
             int stderrFileDescriptor = -1);

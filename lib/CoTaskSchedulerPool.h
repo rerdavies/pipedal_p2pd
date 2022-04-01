@@ -1,12 +1,12 @@
 #pragma once
-#include "p2psession/CoTask.h"
+#include "cotask/CoTask.h"
 #include <thread>
 #include <exception>
 #include <coroutine>
 #include <condition_variable>
 
 #ifndef DOXYGEN
-namespace p2psession
+namespace cotask
 {
 
     class TerminateException: std::exception {

@@ -1,3 +1,3 @@
-#include "p2psession/CoService.h"
+#include "cotask/CoService.h"
 
-using namespace p2psession;
+using namespace cotask;

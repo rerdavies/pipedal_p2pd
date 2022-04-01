@@ -11,7 +11,7 @@
 #include "MessageAwaiter.h"
 
 #ifdef JUNK
-namespace p2psession
+namespace cotask
 {
 
     class SessionManager

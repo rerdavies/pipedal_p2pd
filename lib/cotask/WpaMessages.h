@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace p2psession {
+namespace cotask {
 
 
 

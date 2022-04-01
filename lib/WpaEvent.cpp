@@ -1,10 +1,10 @@
-#include "p2psession/WpaEvent.h"
+#include "cotask/WpaEvent.h"
 
 #include "ss.h"
 #include "stddef.h"
 #include <cctype>
 
-using namespace p2psession;
+using namespace cotask;
 
 bool skipBalancedPair(const char *line,const char**lineOut)
 {

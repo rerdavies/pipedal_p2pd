@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-namespace p2psession {
+namespace cotask {
 
     class CoException: public std::exception
     {

@@ -1,4 +1,4 @@
-#include "p2psession/AsyncIo.h"
+#include "cotask/AsyncIo.h"
 #include <iostream>
 #include <thread>
 #include <functional>
@@ -12,9 +12,9 @@
 #include <condition_variable>
 #include <chrono>
 #include <sys/ioctl.h>
-#include "p2psession/CoService.h"
+#include "cotask/CoService.h"
 
-using namespace p2psession;
+using namespace cotask;
 using namespace std;
 
 AsyncIo *AsyncIo::instance;

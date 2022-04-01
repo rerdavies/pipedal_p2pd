@@ -4,7 +4,7 @@
 #include <exception>
 #include <stdexcept>
 
-namespace p2psession
+namespace cotask
 {
     template <typename T>
     class Fifo

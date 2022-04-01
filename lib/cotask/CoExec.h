@@ -3,25 +3,25 @@
 #include "CoTask.h"
 #include <vector>
 #include <string>
-#include "AsyncFile.h"
+#include "CoFile.h"
 #include "Os.h"
 
-namespace p2psession
+namespace cotask
 {
 
 /**
- * @brief Execute a child process with standard I/O redirected to AsyncFile's.
+ * @brief Execute a child process with standard I/O redirected to CoFile's.
  * 
- * Call Execute() to start the child process. Stdin() provides an AsyncFile that can be
+ * Call Execute() to start the child process. Stdin() provides an CoFile that can be
  * used to write to the standard input of the child process from coroutines.
  * 
  * Stdout() and Stderr() allow coroutines to read standard output.
  */
-    class AsyncExec
+    class CoExec
     {
     public:
-        AsyncExec() {}
-        virtual ~AsyncExec();
+        CoExec() {}
+        virtual ~CoExec();
 
         /**
          * @brief Start a child process.
@@ -31,10 +31,27 @@ namespace p2psession
          * 
          * After starting the process, a matching call should be made to Wait() in order to 
          * allow the zombie process that is left after the child process terminates to be reclaimed.
+         * 
+         * The child inherits environment variables from the current process.
          */
         void Execute(
             const std::filesystem::path &pathName,
             const std::vector<std::string> &arguments);
+        /**
+         * @brief Start a child process.
+         * 
+         * @param pathName Fully qualified path of the command to execute.
+         * @param arguments Arguments for the child process.
+         * @param environment Environment variables for the chill process.
+         * 
+         * After starting the process, a matching call should be made to Wait() in order to 
+         * allow the zombie process that is left after the child process terminates to be reclaimed.
+         * 
+         */
+        void Execute(
+            const std::filesystem::path &pathName,
+            const std::vector<std::string> &arguments,
+            const std::vector<std::string> &environment);
 
         /**
          * @brief Wait for the child process to terminate.
@@ -87,23 +104,23 @@ namespace p2psession
         /**
          * @brief Standard input for the child process.
          * 
-         * @return AsyncFile& 
+         * @return CoFile& 
          */
-        AsyncFile & Stdin() { return stdin; }
+        CoFile & Stdin() { return stdin; }
         /**
          * @brief Standard output for the child process.
          * 
-         * @return AsyncFile& 
+         * @return CoFile& 
          */
-        AsyncFile & Stdout() { return stdout; }
+        CoFile & Stdout() { return stdout; }
         /**
          * @brief Stander error outut for the child process.
          * 
          * @return AsyncFile& 
          */
-        AsyncFile & Stderr() { return stderr; }
+        CoFile & Stderr() { return stderr; }
     private:
         os::ProcessId processId = os::ProcessId::Invalid;
-        AsyncFile stdin, stdout, stderr;
+        CoFile stdin, stdout, stderr;
     };
 } // namespace
