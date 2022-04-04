@@ -48,7 +48,7 @@ CoTask<> CoFastWriter(std::unique_ptr<CoFile> writer, size_t lengthBytes,bool tr
 
     while (lengthBytes != 0)
     {
-        for (int j = 0; j < sizeof(buffer); ++j)
+        for (size_t j = 0; j < sizeof(buffer); ++j)
         {
             buffer[j] =  'a' + (i % 26);
         }
@@ -88,7 +88,7 @@ CoTask<> CoSlowReader(std::unique_ptr<CoFile> reader, size_t expectedBytes,bool 
         }
 
         int lastRead = 0;
-        int offset = 0;
+        size_t offset = 0;
         while (offset < sizeof(buffer))
         {
             lastRead = co_await reader->CoRead(buffer+offset,sizeof(buffer)-offset);

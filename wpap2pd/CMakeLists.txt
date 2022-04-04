@@ -2,16 +2,41 @@
 #
 cmake_minimum_required (VERSION 3.9)
 
+set(WPA_CTRL_PATH ../..//wpa_supplicant-2.10/src)
 
 add_executable(wpap2pd 
     main.cpp
-    P2pSessionManager.h P2pSessionManager.cpp
+    ${WPA_CTRL_PATH}/common/wpa_ctrl.c
+    ${WPA_CTRL_PATH}/utils/os_unix.c
+    WpaEvent.cpp includes/WpaEvent.h
+    WpaMessages.cpp includes/WpaMessages.h
+    P2pUtil.cpp includes/P2pUtil.h
+    P2pConfiguration.cpp includes/P2pConfiguration.h
+    ss.h
+    WpaCliWrapper.cpp includes/WpaCliWrapper.h
+    P2pSessionManager.cpp includes/P2pSessionManager.h 
     CommandLineParser.h
 )
-target_include_directories(wpap2pd INTERFACE cotask)
+target_compile_definitions(wpap2pd PRIVATE CONFIG_CTRL_IFACE CONFIG_CTRL_IFACE_UNIX)
 target_link_libraries(wpap2pd cotask)
-target_include_directories(wpap2pd PRIVATE "../lib")
+target_include_directories(wpap2pd PRIVATE
+     "../lib"
+     ${WPA_CTRL_PATH}/common
+     ${WPA_CTRL_PATH}/utils
+     .
+     )
+
+add_executable(referencetest 
+    ReferenceTest.cpp
+)
+
+add_test(NAME ReferenceTest COMMAND referencetest)
+
+#add_executable(wpaCliTest
+#    WpaCliTest.cpp
+#)
+
+#target_link_libraries(wpaCliTest pthread cotask)
 
 
 
-add_test(CoTaskTest coTaskTest)

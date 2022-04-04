@@ -200,6 +200,11 @@ CoTask<> CoFile::CoOpen(const std::filesystem::path &path, CoFile::OpenMode mode
     constexpr int PERMS = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH; // rw-rw-r--
     switch (mode)
     {
+    case OpenMode::ReadWrite:
+    {
+        file_fd = open(path.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC,PERMS);
+    }
+    break;
     case OpenMode::Read:
         file_fd = open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         break;
@@ -225,7 +230,6 @@ CoTask<int> CoFile::CoRead(void *data, size_t length, std::chrono::milliseconds 
 
     char *pData = ((char *)data);
 
-    int nRead = 0;
 
     readReady = false;
     // read until full, or until there is NO MORE!

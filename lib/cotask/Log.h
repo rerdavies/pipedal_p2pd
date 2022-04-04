@@ -22,6 +22,7 @@ namespace cotask
         virtual ~ILog() {}
 
         void SetLogLevel(LogLevel logLevel) { this->logLevel = logLevel; }
+
         LogLevel GetLogLevel() const { return this->logLevel; }
 
         void Debug(const std::string &message)
@@ -96,28 +97,31 @@ namespace cotask
     private:
         std::mutex mutex;
 
+
+    private:
+        static std::string now();
     protected:
         virtual void OnDebug(const std::string &message)
         {
-            std::unique_lock lock{mutex};
-            std::cout << "dbg:" << message << std::endl;
+            std::lock_guard lock{mutex};
+            std::cout << now() << " Debug: " << message << std::endl;
         }
         virtual void OnInfo(const std::string &message)
         {
-            std::unique_lock lock{mutex};
-            std::cout << "inf:" << message << std::endl;
+            std::lock_guard lock{mutex};
+            std::cout << now()<< " Info: " << message << std::endl;
         }
         virtual void OnWarning(const std::string &message) 
         {
-            std::unique_lock lock{mutex};
-            std::cout << "WRN:" << message << std::endl;
+            std::lock_guard lock{mutex};
+            std::cout << now() << " Warning: " << message << std::endl;
         }
         virtual void OnError(const std::string &message) 
                 {
-            std::unique_lock lock{mutex};
-            std::cout << "ERR:" << message << std::endl;
+            std::lock_guard lock{mutex};
+            std::cout << now() << " Error: " << message << std::endl;
         }
 
     };
 
-}; // namespace
+} // namespace

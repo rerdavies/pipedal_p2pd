@@ -1,6 +1,7 @@
-#include "cotask/WpaCliWrapper.h"
+#include "includes/WpaCliWrapper.h"
 
 
+using namespace p2p;
 using namespace cotask;
 
 

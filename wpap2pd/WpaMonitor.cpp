@@ -1,6 +1,6 @@
-#include "cotask/WpaCliWrapper.h"
-#include "cotask/Os.h"
-#include "cotask/CoEvent.h"
+#include "includes/WpaCliWrapper.h"
+#include <cotask/Os.h>
+#include <cotask/CoEvent.h>
 
 using namespace cotask;
 using namespace std;
@@ -82,7 +82,7 @@ CoTask<> WpaCliWrapper::ReadErrors() {
 }
 
 
-CoTask<> WpaCliWrapper::Run(int argc, char **argv)
+CoTask<> WpaCliWrapper::Run(int argc, const char *const*argv)
 {
     vector<string> args;
 

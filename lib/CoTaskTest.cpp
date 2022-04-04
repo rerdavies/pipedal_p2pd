@@ -28,7 +28,9 @@ CoTask<int> DelayTask2(int instance)
     co_return 1;
 }
 
-CoTask<int> DelayTask1()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-value" // because: spurious warning.
+CoTask<> DelayTask1()
 {
     auto startMs = CoDispatcher::Now();
     int checkPoints = 1;
@@ -48,14 +50,15 @@ CoTask<int> DelayTask1()
     auto elapsed = CoDispatcher::Now() - startMs;
     assert(elapsed.count() >= 3000);
     assert(checkPoints == 4);
-    co_return checkPoints;
+    co_return;
 }
+#pragma GCC diagnostic pop
 
 void DelayTest()
 {
 
     cout << "--- DelayTest" << endl;
-    CoTask<int> task = DelayTask1();
+    CoTask<> task = DelayTask1();
 
     task.GetResult();
 
@@ -299,7 +302,6 @@ void CatchTest()
         assert(false && "Exception was supposed to be caught.");
     }
 
-    bool caught;
     
     std::exception_ptr eptr;
     try

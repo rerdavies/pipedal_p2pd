@@ -12,14 +12,27 @@ include(CTest)
 enable_testing()
 
 set (CMAKE_CXX_STANDARD 20)
-add_compile_options("-fcoroutines")
+
+add_compile_options ($<$<COMPILE_LANGUAGE:CXX>:-fcoroutines>)
+
+add_compile_options("-Wall" "-Werror" "-pedantic" "-fmax-errors=50")
 
 
+
+if (CMAKE_BUILD_TYPE MATCHES [Dd]ebug)
+message(STATUS "Address Sanitizer enabled.")
+
+add_compile_options("-fsanitize=address")
+add_link_options("-fsanitize=address" "-static-libasan" )
+
+
+
+endif()
 
 # Include sub-projects.
 add_subdirectory("lib")
 add_subdirectory("doxygen")
-# add_subdirectory("wpap2pd")
+add_subdirectory("wpap2pd")
 
 
 #set(CPACK_GENERATOR "DEB")

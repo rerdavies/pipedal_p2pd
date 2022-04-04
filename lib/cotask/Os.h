@@ -87,5 +87,5 @@ namespace cotask
           
         void SetThreadBackgroundPriority();
 
-    };
+    }
 }

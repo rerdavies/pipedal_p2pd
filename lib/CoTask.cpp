@@ -183,7 +183,7 @@ bool CoDispatcher::PumpTimerMessages(TimeMs time)
     {
         if (functionTimerQueue.empty())
         {
-            if (coroutineTimerQueue.top().time.count() < time.count())
+            if (coroutineTimerQueue.top().time <= time)
             {
                 auto handle = coroutineTimerQueue.top().handle;
                 coroutineTimerQueue.pop();
@@ -195,22 +195,29 @@ bool CoDispatcher::PumpTimerMessages(TimeMs time)
         }
         else
         {
-            if (functionTimerQueue.begin()->time.count() <= coroutineTimerQueue.top().time.count())
+            if (functionTimerQueue.front().time.count() <= coroutineTimerQueue.top().time.count())
             {
-                auto fn = functionTimerQueue.begin()->fn;
-                functionTimerQueue.pop_front();
-                lock.unlock();
-                fn();
-                return true;
+                if (functionTimerQueue.front().time <= time)
+                {
+                    auto fn = functionTimerQueue.front().fn;
+                    functionTimerQueue.pop_front();
+                    lock.unlock();
+                    fn();
+                    return true;
+                }
             }
-            else
+            else if (coroutineTimerQueue.top().time.count() < time.count())
             {
-                auto handle = coroutineTimerQueue.top().handle;
-                coroutineTimerQueue.pop();
-                lock.unlock();
-                handle.resume();
-                return true;
+                if (coroutineTimerQueue.top().time <= time)
+                {
+                    auto handle = coroutineTimerQueue.top().handle;
+                    coroutineTimerQueue.pop();
+                    lock.unlock();
+                    handle.resume();
+                    return true;
+                }
             }
+            return false;
         }
     }
 }
@@ -293,6 +300,51 @@ void CoDispatcher::SleepUntil(TimeMs time)
         if (delay < 1ms)
             delay = 1ms;
         std::this_thread::sleep_for(delay);
+    }
+}
+
+void CoDispatcher::PumpMessages(std::chrono::milliseconds timeout)
+{
+    auto endTime = Now() + timeout;
+    if (PumpMessages())
+    {
+        return;
+    }
+
+    if (IsForeground())
+    {
+
+        while (true)
+        {
+            auto now = Now();
+            if (now >= endTime)
+                throw CoTimedOutException();
+
+            TimeMs waitTime = endTime;
+            TimeMs timerDelay;
+            if (GetNextTimer(&timerDelay))
+            {
+                if (timerDelay < waitTime)
+                {
+                    waitTime = timerDelay;
+                }
+            }
+            {
+                std::unique_lock lock{pumpMessageMutex};
+                TimeMs delay = waitTime - Now();
+                if (delay < 1ms)
+                    delay = 1ms;
+                pumpMessageConditionVariable.wait_for(lock, delay);
+            }
+            if (PumpMessages())
+            {
+                return;
+            }
+        }
+    }
+    else
+    {
+        throw std::logic_error("Can't call this function on a background thread.");
     }
 }
 
@@ -395,7 +447,7 @@ CoDispatcher::~CoDispatcher()
         Log().Debug("Dispatcher deleted.");
     }
     {
-        std::lock_guard lock { gLogMutex}; // protect the shared_ptr.
+        std::lock_guard lock{gLogMutex}; // protect the shared_ptr.
         this->log = nullptr;
     }
 }
@@ -465,13 +517,15 @@ void CoDispatcher::ScavengeTasks()
 {
     for (auto i = coroutineThreads.begin(); i != coroutineThreads.end(); /**/)
     {
-    
+
         if (i->handle.done())
         {
-            try {
+            try
+            {
 
                 i->GetResult();
-            } catch (std::exception e)
+            }
+            catch (const std::exception &e)
             {
                 Log().Error(SS("Coroutine Thread exited abnormally. (" << e.what() << ")"));
             }
@@ -495,7 +549,7 @@ void CoDispatcher::PostQuit()
     if (!IsForeground())
     {
         pForegroundDispatcher->PostQuit();
-    }   
+    }
     this->quit = true;
     this->PumpMessageNotifyOne();
 }

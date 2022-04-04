@@ -72,7 +72,7 @@ namespace cotask
         };
         #endif
     }
-};
+}
 
 void CoConditionVariable::AddAwaiter(Awaiter *awaiter)
 {
@@ -162,7 +162,20 @@ void CoConditionVariable::Notify(std::function<void(void)> action)
         bool ready = true;
         if (awaiter->conditionTest)
         {
-            ready = awaiter->conditionTest();
+            try {
+                ready = awaiter->conditionTest();
+            } catch (const std::exception &e)
+            {
+                awaiters.erase(awaiters.begin());
+                if (awaiter->pCallback != nullptr)
+                {
+                    auto t = awaiter->pCallback;
+                    awaiter->pCallback = nullptr;
+                    lock.unlock();
+                    t->SetException(std::current_exception());
+                    return;
+                }
+            }
         }
         if (ready)
         {

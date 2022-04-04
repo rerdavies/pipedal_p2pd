@@ -50,7 +50,7 @@ namespace twoplay
             {
                 return option == text;
             }
-            virtual int Execute(int argcRemaining, const char **argvRemaining) = 0;
+            virtual int Execute(int argcRemaining, const char*const*argvRemaining) = 0;
         };
         std::vector<OptionBase *> options;
 
@@ -67,7 +67,7 @@ namespace twoplay
                   value(value)
             {
             }
-            virtual int Execute(int argcRemaining, const char **argvRemaining)
+            virtual int Execute(int argcRemaining, const char *const*argvRemaining)
             {
                 *pOutput = value;
                 return 0;
@@ -86,7 +86,7 @@ namespace twoplay
                   pOutput(pOutput)
             {
             }
-            virtual int Execute(int argcRemaining, const char **argvRemaining)
+            virtual int Execute(int argcRemaining, const char *const*argvRemaining)
             {
                 if (argcRemaining == 0)
                 {
@@ -121,7 +121,7 @@ namespace twoplay
                     pOutput(pOutput)
             {
             }
-            virtual int Execute(int argcRemaining, const char **argvRemaining)
+            virtual int Execute(int argcRemaining, const char *const*argvRemaining)
             {
                 if (argcRemaining == 0 || argvRemaining[0][0] == '-')
                 {
@@ -132,7 +132,7 @@ namespace twoplay
             }
         };
 
-        int ProcessOption(const std::string &text, int argsRemaining, const char *argv[])
+        int ProcessOption(const std::string &text, int argsRemaining, const char *const*argv)
         {
             for (auto option : options)
             {
@@ -172,7 +172,7 @@ namespace twoplay
         {
             options.push_back(new Option<T>(option, pResult));
         }
-        bool Parse(int argc, const char *argv[])
+        bool Parse(int argc, const char * const*argv)
         {
             for (int i = 1; i < argc; ++i)
             {

@@ -96,7 +96,6 @@ private:
     {
         std::unique_lock lock{epollMutex};
 
-        bool found = false;
 
         for (auto i = epollEvents.begin(); i != epollEvents.end(); ++i)
         {
@@ -116,7 +115,6 @@ private:
     {
         try
         {
-            int timeout = 0;
             epoll_event events[10];
 
             while (true)

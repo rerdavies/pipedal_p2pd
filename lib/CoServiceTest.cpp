@@ -66,7 +66,7 @@ auto SimpleService(
     awaitable.timeoutMs = timeoutMs;
     awaitable.delayCancelExecute = delayCancelExecute;
     return awaitable;
-};
+}
 
 
 CoTask<> SimpleServiceTest1(bool onForeground) {
@@ -163,7 +163,7 @@ CoTask<> SimpleServiceTest()
 void TestSimpleService()
 {
     cout << "---- TestSimpleService ---" << endl;
-    CoDispatcher &dispatcher = CoDispatcher::CurrentDispatcher();
+    
     CoTask<> task = SimpleServiceTest();
 
     task.GetResult();

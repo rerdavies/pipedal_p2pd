@@ -6,18 +6,13 @@ include(CTest)
 
 add_library(cotask SHARED
 
-./cotask/WpaConstants.h
-./cotask/CoTask.h
-./cotask/WpaEvent.h
 ./cotask/Os.h
 ./cotask/CoService.h
 ./cotask/CoFile.h
-./cotask/WpaMessages.h
 ./cotask/MessageAwaiter.h
 ./cotask/Log.h
 ./cotask/AsyncIo.h
 ./cotask/Fifo.h
-./cotask/WpaCliWrapper.h
 ./cotask/CoExec.h
 ./cotask/CoEvent.h
 
@@ -25,16 +20,13 @@ add_library(cotask SHARED
 
 ./ss.h
 ./CoTask.cpp
+./Log.cpp
 ./CoEvent.cpp
-./WpaEvent.cpp
 ./CoTaskSchedulerPool.h
 ./CoService.cpp
 ./CoTaskTest.cpp
 ./AsyncIoLinux.cpp
 ./CoFile.cpp
-./SessionManager.cpp
-./WpaMessages.cpp
-./WpaCliWrapper.cpp
 ./CoExec.cpp
 ./OsLinux.cpp
 
@@ -90,12 +82,6 @@ target_link_libraries(asyncExecTest pthread cotask)
 
 add_test(NAME AsyncExecTest COMMAND asyncExecTest)
 
-
-add_executable(wpaCliTest
-    WpaCliTest.cpp
-)
-
-target_link_libraries(wpaCliTest pthread cotask)
 
 
 add_executable(coEventTest

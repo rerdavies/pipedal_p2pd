@@ -1,31 +1,46 @@
 #pragma once
 
-#include "CoExec.h"
-#include "CoEvent.h"
+#include <cotask/CoExec.h>
+#include <cotask/CoEvent.h>
+#include <cotask/Log.h>
 #include "WpaEvent.h"
+#include <functional>
 
 
-namespace cotask {
-    class WpaCliWrapper : private CoExec  {
+namespace p2p {
+    using namespace ::cotask;
+
+    class WpaCliWrapper  {
         using base = CoExec;
     public:
-        [[nodiscard ]] CoTask<> Run(int argc, char**argv);
+        [[nodiscard ]] CoTask<> Run(int argc, const char*const*argv);
+
+        ILog&Log() { return *pLog; }
 
     protected:
+        enum class Source {
+            P2p,
+            Wlan
+        };
         virtual CoTask<> CoOnInit() { co_return; }
         virtual void Init() { return; }
-        virtual void OnEvent(WpaEvent &event) { return;}
+        virtual void OnEvent(Source source,WpaEvent &event) { return;}
+        virtual void Terminate();
     private:
-        bool traceMessages = true;
-        CoTask<> ProcessMessages();
-        CoTask<> ReadMessages();
-        CoTask<> ReadErrors();
-        CoTask<> WriteMessages();
+        std::string p2pInterfaceName = "p2p-dev-wlan0";
+        std::string wlanInterfaceName = "wlan0";
 
+        CoFile p2pSocket;
+        CoFile wlanSocket;
+
+        ILog *pLog = new ConsoleLog();
+
+        bool traceMessages = true;
+
+        CoTask<> ReadP2pMessages(std::function<void(void)> onClosed);
+        CoTask<> ReadWlanMessages(std::function<void(void)> onClosed);
         CoTask<std::vector<std::string>> ReadToPrompt(std::chrono::milliseconds timeout);
 
-        void Execute(const std::vector<std::string> &arguments);
-        void Execute(const std::string &deviceName);
 
         bool lineBufferRecoveringFromTimeout = false;
         int lineBufferHead = 0;

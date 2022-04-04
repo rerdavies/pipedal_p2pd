@@ -19,7 +19,7 @@ namespace cotask {
             virtual void SetReadyCallback(WaitOperation op,callback callbackOnReady) = 0;
             virtual void ClearReadyCallback(WaitOperation op) = 0;
         };
-    };
+    }
     #endif
 
     /**
@@ -39,7 +39,8 @@ namespace cotask {
         {
             Read,
             Create,
-            Append
+            Append,
+            ReadWrite
         };
         /**
          * @brief Default constructor.

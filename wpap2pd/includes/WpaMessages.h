@@ -3,12 +3,14 @@
 
 #include <string>
 
-namespace cotask {
+namespace p2p {
 
 
 
 enum class WpaEventMessage {
-    WPA_UNKOWN_MESSAGE,         // "UNKNOWN"
+    WPA_INVALID_MESSAGE = -1,
+    
+    WPA_UNKOWN_MESSAGE = 0,         // "UNKNOWN"
 /** Interactive request for identity/password/pin */
    WPA_CTRL_REQ,         // "CTRL-REQ-"
 
@@ -408,7 +410,12 @@ enum class WpaEventMessage {
 
 /* Event triggered for received management frame */
    AP_MGMT_FRAME_RECEIVED,         // "AP-MGMT-FRAME-RECEIVED "
+
+
+   MAX_MESSAGE
 };
+
+const std::string &WpaEventMessageToString(WpaEventMessage message);
 
 WpaEventMessage GetWpaEventMessage(const std::string &message);
 

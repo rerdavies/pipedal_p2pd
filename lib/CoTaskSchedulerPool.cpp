@@ -69,7 +69,7 @@ void CoTaskSchedulerPool::Resize(size_t desiredSize)
         std::unique_lock lock{schedulerMutex};
         this->desiredSize = desiredSize;
         // if a reduction, just wait for threads to check desired size.
-        for (int i = threads.size(); i < desiredSize; ++i)
+        for (size_t i = threads.size(); i < desiredSize; ++i)
         {
             ++threadSize;
             threads.push_back(new CoTaskSchedulerThread(this, pForegroundDispatcher));

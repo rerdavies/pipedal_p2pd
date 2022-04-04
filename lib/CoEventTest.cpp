@@ -1,5 +1,6 @@
 #include "cotask/CoEvent.h"
 #include "cotask/CoExceptions.h"
+#include "cotask/CoBlockingQueue.h"
 #include "cotask/Os.h"
 #include <cassert>
 
@@ -164,16 +165,37 @@ void MutexTest()
 }
 //////////// Blocking queue test //////////////
 
+int leakCount = 0;
+class TestTarget
+{
+public:
+    TestTarget() { ++leakCount; }
+    ~TestTarget() { --leakCount; }
+
+    int i;
+};
+
 class CBlockingQueueTest
 {
 public:
-    using queue_type = CoBlockingQueue<int>;
-    CoTask<> Writer(queue_type &queue, int numberOfWrites, int writeBatchSize)
+    using bq_element_type = TestTarget;
+
+    using queue_type = CoBlockingQueue<bq_element_type>;
+
+    CoTask<> Writer(bool foreground, queue_type &queue, int numberOfWrites, int writeBatchSize)
     {
-        queue_type::item_type value;
+        if (foreground)
+        {
+            co_await CoForeground();
+        }
+        else
+        {
+            co_await CoBackground();
+        }
 
         for (int i = 0; i < numberOfWrites; ++i)
         {
+            TestTarget *value = new TestTarget();
             if (i % writeBatchSize == 0)
             {
                 co_await CoDelay(111ms);
@@ -182,15 +204,15 @@ public:
         }
         queue.Close();
     }
-    CoTask<> Reader(queue_type &queue,int numberOfWrites, int readerBatchSize)
+    CoTask<> Reader(queue_type &queue, int numberOfWrites, int readerBatchSize)
     {
-        queue_type::item_type value;
         int numberOfReads = 0;
         try
         {
             while (true)
             {
-                value = co_await queue.Take();
+                queue_type::item_type *value = co_await queue.Take();
+                delete value;
                 ++numberOfReads;
                 if (numberOfReads % readerBatchSize)
                 {
@@ -217,29 +239,28 @@ public:
             co_await CoBackground();
         }
 
-        CoBlockingQueue<int> queue{queueSize};
-        Dispatcher().StartThread(Writer(queue,numberOfWrites,writeBatchSize));
-        
-        co_await Reader(queue,numberOfWrites,readerBatchSize);
+        queue_type queue{queueSize};
+        Dispatcher().StartThread(Writer(foreground, queue, numberOfWrites, writeBatchSize));
+
+        co_await Reader(queue, numberOfWrites, readerBatchSize);
+
+        assert(leakCount == 0);
     }
 
     void Run()
     {
         cout << "--- TestBlockingQueue" << endl;
         cout << "    Foreground" << endl;
-        CoTask<> task = TestBlockingQueue(true, 100, 6, 7,8);
+        CoTask<> task = TestBlockingQueue(true, 100, 6, 7, 8);
         task.GetResult();
         cout << "    Background" << endl;
-        task = TestBlockingQueue(false, 99, 5, 11,7);
+        task = TestBlockingQueue(false, 99, 5, 11, 7);
         task.GetResult();
         cout << "    Done" << endl;
-
-        
     }
 };
 
-void
-BlockingQueueTest()
+void BlockingQueueTest()
 {
     CBlockingQueueTest test;
     test.Run();
@@ -254,6 +275,6 @@ int main(int argc, char **argv)
     MutexTest();
     ConditionVariableTest();
     Dispatcher().DestroyDispatcher();
-    
+
     return 0;
 }

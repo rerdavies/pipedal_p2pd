@@ -73,7 +73,6 @@ std::filesystem::path cotask::os::FindOnPath(const std::string &filename)
 // see man 7 environ!
 extern char **environ;
 
-#define LEAVE_STDERRR 1
 ProcessId cotask::os::Spawn(
     const std::filesystem::path &path,
     const std::vector<std::string> &arguments,
@@ -94,10 +93,10 @@ ProcessId cotask::os::Spawn(
         pArgs[i] = arguments[i].c_str();
     }
     pArgs[arguments.size()] = nullptr;
-    pArgs[arguments.size()+1] = nullptr;
-    pArgs[arguments.size()+1] = nullptr;
+    pArgs[arguments.size() + 1] = nullptr;
+    pArgs[arguments.size() + 1] = nullptr;
 
-    const char **pEnv = new const char*[environment.size()+1];
+    const char **pEnv = new const char *[environment.size() + 1];
     for (size_t i = 0; i < environment.size(); ++i)
     {
         pEnv[i] = environment[i].c_str();
@@ -149,8 +148,11 @@ ProcessId cotask::os::Spawn(
         close(stderrFileDescriptor);
     }
 
-    int result = execve(path.c_str(), (char *const *)pArgs,(char*const*)pEnv);
-    cerr << "Error2: Exec failed." << strerror(errno) << endl;
+    int result = execve(path.c_str(), (char *const *)pArgs, (char *const *)pEnv);
+    if (result < 0)
+    {
+        cerr << "Error2: Exec failed." << strerror(errno) << endl;
+    }
     exit(EXIT_FAILURE);
 }
 
@@ -204,6 +206,10 @@ bool cotask::os::WaitForProcess(ProcessId processId, int timeoutMs)
     if (timeoutMs < 0)
     {
         int ret = waitpid(pid, &status, 0);
+        if (ret == -1)
+        {
+            throw std::invalid_argument("No such process.");
+        };
     }
     else
     {
@@ -236,20 +242,22 @@ bool cotask::os::WaitForProcess(ProcessId processId, int timeoutMs)
     return false; // terminated abnormally.
 }
 
-void cotask::os::SetFileNonBlocking(int file_fd,bool nonBlocking)
+void cotask::os::SetFileNonBlocking(int file_fd, bool nonBlocking)
 {
     // remove NONBLOCKING.
-    int statusFlags = fcntl(file_fd,F_GETFL);
+    int statusFlags = fcntl(file_fd, F_GETFL);
     if (nonBlocking)
     {
         statusFlags |= O_NONBLOCK;
-    } else {
+    }
+    else
+    {
         statusFlags &= ~O_NONBLOCK;
     }
-    fcntl(file_fd,F_SETFL,statusFlags);
+    fcntl(file_fd, F_SETFL, statusFlags);
 }
 
-
-void cotask::os::SetThreadBackgroundPriority() {
+void cotask::os::SetThreadBackgroundPriority()
+{
     nice(1);
 }

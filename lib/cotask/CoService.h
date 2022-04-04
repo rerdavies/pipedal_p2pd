@@ -428,7 +428,7 @@ has been given.
                 }
                 else
                 {
-                    serviceState == ServiceState::ResumedTimeoutInFlight;
+                    serviceState = ServiceState::ResumedTimeoutInFlight;
                 }
             }
             break;

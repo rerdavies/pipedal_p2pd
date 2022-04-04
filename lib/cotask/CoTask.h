@@ -85,6 +85,16 @@ namespace cotask
         bool PumpMessages();
         bool PumpMessages(bool waitForTimers);
 
+        /**
+         * @brief Pump messages.
+         * 
+         * Pump at least one message, sleeping if neccessary.
+         * 
+         * @param timeout how long to wait for a message to pump.
+         * @throws CoTimedOutException if the timeout occurs before any messages are pumped.
+         */
+        void PumpMessages(std::chrono::milliseconds timeout);
+
         void PumpUntilIdle();
 
         void MessageLoop();

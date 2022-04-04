@@ -3,12 +3,12 @@
 #include <string>
 #include <string_view>
 #include <functional>
-#include "WpaEvent.h"
-#include "WpaMessages.h"
-#include "CoTask.h"
-#include "Log.h"
+#include "includes/WpaEvent.h"
+#include "includes/WpaMessages.h"
+#include <cotask/CoTask.h>
+#include <cotask/Log.h>
 #include <memory>
-#include "MessageAwaiter.h"
+#include <cotask/MessageAwaiter.h>
 
 #ifdef JUNK
 namespace cotask

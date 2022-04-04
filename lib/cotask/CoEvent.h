@@ -13,7 +13,7 @@ namespace cotask
     namespace private_
     {
         class CoConditionaVariableImplementation;
-    };
+    }
 #endif
 
     /**
@@ -122,22 +122,22 @@ namespace cotask
          */
         [[nodiscard]] CoTask<> Wait(std::function<bool(void)> conditionTest)
         {
-            bool result = co_await Wait(NO_TIMEOUT, conditionTest);
+            co_await Wait(NO_TIMEOUT, conditionTest);
             co_return;
         }
         /**
- * @brief Suspend execution of a courinte until a call to Notify() is made.
- *          * 
- * Waits using the default conditionTest, which is:
- * 
- *     [] () {
- *         if (this->ready){
- *               this->ready = false;
- *               return true; // procede.
- *         }
- *         return false; // suspend current coroutine.
- *     }
- */
+         * @brief Suspend execution of a courinte until a call to Notify() is made.
+         *          * 
+         * Waits using the default conditionTest, which is:
+         * 
+         *     [] () {
+         *         if (this->ready){
+         *               this->ready = false;
+         *               return true; // procede.
+         *         }
+         *         return false; // suspend current coroutine.
+         *     }
+         */
 
         [[nodiscard]] CoTask<> Wait()
         {
@@ -191,22 +191,23 @@ namespace cotask
          */
         void Execute(function<void(void)> executeAction);
         /**
-         * @brief Execute a function synchronously while the internal wait mutex is held.
+         * @brief Execute a function synchronously while the internal wait mutex is held, and return a value.
          * 
          * @tparam T 
-         * @param executeAction 
-         * @return T The value returned by executeAction.
+         * @param testAction 
+         * @return T The value returned by testAction.
          * 
-         * executeAction is called, but, unlike Notify(), no attempt is made to resume awaiting coroutines.
+         * testAction is called while protected by the internal mutex; but, unlike Notify(), no attempt is made to 
+         * resume awaiting coroutines. Test() returns the value returned by executeAction.
          * 
          * e.g.:
          * 
          *      bool IsEmpty() {
-         *             cv.Execute([] { return queue.empty(); });
+         *             cv.Test([] { return queue.empty(); });
          *      }
          */
         template <class T>
-        T Execute(function<T(void)> executeAction);
+        T Test(function<T(void)> testAction);
 
     private:
         std::mutex mutex;
@@ -322,182 +323,21 @@ namespace cotask
             return "Queue closed.";
         }
     };
-    /**
-     * @brief An thread-safe coroutine queue containing elements of type T.
-     * 
-     * @tparam T Type of objects contained in the quueue.
-     * 
-     * The maximum length of a CoBlockingQueue is unbounded. For a queue that has a maximum number 
-     * of entries, see CoBlockingQueue.
-     */
-    template <class T>
-    class CoBlockingQueue
-    {
-    public:
-        using item_type = T;
-
-        CoBlockingQueue(size_t maxLength);
-
-        /**
-         * @brief Copy a value into the queue.
-         * 
-         * @param value 
-         * @param timeout (optional) Time to wait for space in the queue.
-         * @return Task<> 
-         * @throws CoTimeoutException on timeout.
-         * 
-         * The current coroutine is suspended if there is no space in the queue. 
-         */
-        CoTask<> Push(const T &value, std::chrono::milliseconds timeout = NO_TIMEOUT);
-
-        /**
-         * @brief Move a value into the queue.
-         * 
-         * @param value 
-         * @param timeout (optional) How long to wait for space to become available inthe queue.
-         * @return Task<> 
-         * @throws CoTimeoutException on timeout.
-         * 
-         * The current coroutine is suspended if there is no space in the queue. 
-         */
-        CoTask<> Push(T &&value, std::chrono::milliseconds timeout = NO_TIMEOUT);
-
-        /**
-         * @brief Take a value from the queue.
-         * 
-         * @param timeout How long to wait for a value to become available.
-         * @return Task<T> 
-         * @throws CoTimeoutException on timeout
-         * @throws CoQueueClosedException if Close() has been called.
-         * 
-         * A CoTimeoutException is thrown if the timeout expires.
-         */
-        CoTask<T> Take(std::chrono::milliseconds timeout = NO_TIMEOUT);
-
-        /**
-         * @brief Close the queue.
-         * 
-         * Subsequent attempts to Take() from the queue will throw a CoQueueClosedException.
-         * 
-         */
-        void Close();
-        /**
-         * @brief Is the queue empty?
-         * 
-         * @return true if the queue is empty.
-         * @return false if the queue is not empty.
-         */
-        bool IsEmpty();
-
-    private:
-        size_t maxLength;
-        bool queueEmpty = true;
-        bool queueFull = false;
-        CoConditionVariable pushCv;
-        CoConditionVariable takeCv;
-        using queue_type = std::queue<T, std::list<T>>;
-        queue_type queue;
-        bool closed = false;
-    };
 
     /******* CoConditionVariable inlines ***************/
 
     template <class T>
-    T CoConditionVariable::Execute(function<T(void)> executeAction)
+    T CoConditionVariable::Test(function<T(void)> testAction)
     {
         std::lock_guard lock{mutex};
-        return executeAction();
-    }
-    /*****  CoBlockingQueue inlines ****************************/
-    template <typename T>
-    CoTask<> CoBlockingQueue<T>::Push(const T &value, std::chrono::milliseconds timeout)
-    {
-        co_await pushCv.Wait(
-            timeout,
-            [this, value]() {
-                if (queue.size() == this->maxLength)
-                {
-                    queueFull = true;
-                    return false;
-                }
-                queue.push(value);
-                return true;
-            });
-        takeCv.Notify([this]() {
-            queueEmpty = false;
-        });
-        co_return;
-    }
-    template <typename T>
-    CoTask<> CoBlockingQueue<T>::Push(T &&value, std::chrono::milliseconds timeout)
-    {
-        co_await pushCv.Wait(
-            timeout,
-            [this, value = std::move(value)]() {
-                if (queue.size() == this->maxQueueSize)
-                {
-                    queueFull = true;
-                    return false;
-                }
-                queue.push_back(std::move(value));
-                return true;
-            });
-        takeCv.Notify([this]() {
-            queueEmpty = false;
-        });
-        co_return;
-    }
-    template <typename T>
-    CoTask<T> CoBlockingQueue<T>::Take(std::chrono::milliseconds timeout)
-    {
-        T value;
-        co_await takeCv.Wait(
-            timeout,
-            [this, &value]() {
-                if (queue.empty())
-                {
-                    queueEmpty = true;
-                    if (closed)
-                    {
-                        throw CoQueueClosedException();
-                    }
-                    return false;
-                }
-                value = std::move(queue.front());
-                queue.pop();
-                return true;
-            });
-
-        pushCv.Notify(
-            [this]() {
-                queueFull = false;
-            });
-
-        co_return value;
+        return testAction();
     }
 
-    template <typename T>
-    bool CoBlockingQueue<T>::IsEmpty()
+    inline void CoConditionVariable::Execute(std::function<void()> executeAction)
     {
-        return takeCv.Execute([this] {
-            return queueEmpty;
-        });
+        std::lock_guard lock { mutex};
+        executeAction();
     }
 
-    template <typename T>
-    void CoBlockingQueue<T>::Close()
-    {
-        takeCv.NotifyAll(
-            [this] {
-                this->closed = true;
-            }
-        );
-    }
-    template <typename T>
-    CoBlockingQueue<T>::CoBlockingQueue(size_t maxLength)
-    :maxLength(maxLength)
-    {
-
-    }
 
 } // namespace
