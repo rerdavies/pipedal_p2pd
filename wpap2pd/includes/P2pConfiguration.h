@@ -14,6 +14,11 @@ namespace p2p
     //     Enroller = 600 // Period used by the enroller.
     // };
 
+
+    struct P2pGroupConfiguration {
+        // see wpa_supplicant README-P2P  (e.g. https://web.mit.edu/freebsd/head/contrib/wpa/wpa_supplicant/README-P2P)
+        bool dummy;
+    };
     // Potential future configuration options.
     struct P2pConfiguration {
         int randomSuffixChars = 2;
@@ -24,24 +29,33 @@ namespace p2p
         seconds p2pFindRefreshInterval = 600s; 
         seconds refresnP2pFindTime = 10s; 
         bool updateConfig = true;     // update wpa_supplement config files?
+        std::string p2p_pin = "90000201";
+        std::string p2p_device_name = "PiPedal";
+        std::string p2p_ssid_postfix = "PiPedalGroup"; 
+        std::string model_name = "PiPedal";
+        std::string model_number = "1";
+        bool p2p_per_sta_psk = false;
+        int p2p_go_intent = 15;
+        bool p2p_go_ht40 = false;
+        bool p2p_go_vht = false;
+        bool p2p_go_he = false;
 
-        // dynamic p2p configuration options 
-        std::string p2p_config_methods = "keypad";
-        std::string p2p_device_name = "PiPedal";  // Max 18 characters, gives DIRECT-baseSid-XXX devicename, and DIRECT-XX-BaseSid-xxx names.
-        std::string p2p_manufacturer = "The PiPedal Project";
-        std::string p2p_model_name = "PiPedal";
-        std::string p2p_model_number = "1";
-        std::string p2p_default_pin = "12345678";
+        // Global p2p configuration options 
+        std::string manufacturer = "The PiPedal Project";
         std::string p2p_serial_number = "1";
         std::string p2p_device_type = "1-0050F204-1";
         std::string p2p_os_version = "";
-        bool p2p_go_ht40 = false;
         std::string p2p_sec_device_type = "";
-        uint8_t p2p_go_intent = 15;
-        std::string p2p_ssid_postfix = ""; // defaults to device_name;
+        std::string p2p_config_method = "keypad"; // keypad, display, pbc, or none.
         bool persistent_reconnect = true;
 
+        std::string upnpUuid = "";
+        P2pGroupConfiguration defaultGroupConfiguration;
 
+
+
+        void Save() { }
+        void Load() { }
 
 
     };

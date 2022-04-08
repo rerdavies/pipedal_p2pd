@@ -13,6 +13,8 @@ static std::unordered_map<std::string, WpaEventMessage> stringToWpaEventMessage{
     /** Response to identity/password/pin request */
     {"CTRL-RSP-", WpaEventMessage::WPA_CTRL_RSP},
 
+    {"P2P:",  WpaEventMessage::WPA_P2P_INFO},
+    
     /* Event messages with fixed prefix */
     /** Authentication completed successfully and data connection enabled */
     {"CTRL-EVENT-CONNECTED", WpaEventMessage::WPA_EVENT_CONNECTED},

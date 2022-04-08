@@ -108,7 +108,7 @@ class CMutexTest
     {
         for (int i = 0; i < locks_per_instance; ++i)
         {
-            co_await mutex.Lock();
+            co_await mutex.CoLock();
             cout << "        Thread " << id << "," << i << endl;
             --counter;
             mutex.Unlock();
@@ -127,7 +127,7 @@ class CMutexTest
             cout << "    Background" << endl;
             co_await CoBackground();
         }
-        co_await mutex.Lock();
+        co_await mutex.CoLock();
         counter = instances * locks_per_instance;
         for (int i = 1; i <= instances; ++i)
         {
@@ -138,7 +138,7 @@ class CMutexTest
         while (!done)
         {
             co_await CoDelay(100ms);
-            co_await mutex.Lock();
+            co_await mutex.CoLock();
             if (counter == 0)
             {
                 done = true;

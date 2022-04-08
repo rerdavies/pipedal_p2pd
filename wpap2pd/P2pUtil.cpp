@@ -1,4 +1,6 @@
 #include "includes/P2pUtil.h"
+#include <random>
+#include <sstream>
 
 
 using namespace p2p;
@@ -41,7 +43,7 @@ uint64_t p2p::toUint64(const std::string &value)
         }
         while (isdigit(*p))
         {
-            value = value*10 + (*p)-'0';
+            value = value*10 + (*p++)-'0';
 
         }
         if (*p != 0)
@@ -99,7 +101,7 @@ int64_t p2p::toInt64(const std::string &value)
         }
         while (isdigit(*p))
         {
-            value = value*10 + (*p)-'0';
+            value = value*10 + (*p++)-'0';
 
         }
         if (*p != 0)
@@ -147,4 +149,33 @@ std::vector<std::string> p2p::splitWpaFlags(const std::string &value)
         result.push_back(value.substr(start, i - start));
     }
     return result;
+}
+
+static std::random_device randomDevice;
+
+static std::uniform_int_distribution distribution { 0, 26*2+10-1};
+
+
+std::string p2p::randomText(size_t length)
+{
+    std::stringstream s;
+    for (size_t i = 0; i < length; ++i)
+    {
+        int value = distribution(randomDevice);
+        if (value < 26)
+        {
+            s << char('a' + value);
+        } else {
+            value -= 26;
+            if (value < 26)
+            {
+                s << char('A' + value);
+            } else {
+                value -= 26;
+                s << char('0' + value);
+            }
+        }
+
+    }
+    return s.str();
 }

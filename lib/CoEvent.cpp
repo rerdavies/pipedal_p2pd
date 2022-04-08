@@ -127,7 +127,13 @@ void CoConditionVariable::NotifyAll(function<void(void)> notifyAction)
             auto awaiter = *i;
             if (awaiter->conditionTest)
             {
-                ready = awaiter->conditionTest();
+                try {
+                    ready = awaiter->conditionTest();
+                } catch (const std::exception &e)
+                {
+                    awaiter->UnhandledException();
+                    ready = true;
+                }
             }
             if (ready)
             {
@@ -142,10 +148,7 @@ void CoConditionVariable::NotifyAll(function<void(void)> notifyAction)
     for (auto i = readyAwaiters.begin(); i != readyAwaiters.end(); ++i)
     {
         Awaiter *pAwaiter = (*i);
-        auto t = pAwaiter->pCallback;
-        pAwaiter->pCallback = nullptr;
-        t->SetComplete();
-        // (Awaiter deleted)
+        pAwaiter->SetComplete();
     }
 }
 
@@ -201,7 +204,7 @@ void CoConditionVariable::Notify(std::function<void(void)> action)
     }
 }
 
-CoTask<> CoMutex::Lock()
+CoTask<> CoMutex::CoLock()
 {
     co_await cv.Wait([this] {
         if (locked)

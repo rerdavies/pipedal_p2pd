@@ -9,6 +9,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include "cotask/CoTask.h"
+#include <uuid/uuid.h>
 
 using namespace cotask;
 using namespace cotask::os;
@@ -260,4 +261,16 @@ void cotask::os::SetFileNonBlocking(int file_fd, bool nonBlocking)
 void cotask::os::SetThreadBackgroundPriority()
 {
     nice(1);
+}
+
+namespace cotask::os
+{
+    std::string MakeUuid()
+    {
+        uuid_t uuid;
+        uuid_generate(uuid);
+        char strUid[36 + 1];
+        uuid_unparse(uuid, strUid);
+        return strUid;
+    }
 }

@@ -8,17 +8,24 @@ add_executable(wpap2pd
     main.cpp
     ${WPA_CTRL_PATH}/common/wpa_ctrl.c
     ${WPA_CTRL_PATH}/utils/os_unix.c
+
+    WpaCtrl.cpp includes/WpaCtrl.h
+
     WpaEvent.cpp includes/WpaEvent.h
     WpaMessages.cpp includes/WpaMessages.h
     P2pUtil.cpp includes/P2pUtil.h
     P2pConfiguration.cpp includes/P2pConfiguration.h
     ss.h
-    WpaCliWrapper.cpp includes/WpaCliWrapper.h
+    includes/WpaExceptions.h
+    WpaChannel.cpp includes/WpaChannel.h
+    WpaSupplicant.cpp includes/WpaSupplicant.h
     P2pSessionManager.cpp includes/P2pSessionManager.h 
+    P2pGroup.cpp includes/P2pGroup.h
     CommandLineParser.h
+    AsanOptions.cpp
 )
 target_compile_definitions(wpap2pd PRIVATE CONFIG_CTRL_IFACE CONFIG_CTRL_IFACE_UNIX)
-target_link_libraries(wpap2pd cotask)
+target_link_libraries(wpap2pd cotask uuid )
 target_include_directories(wpap2pd PRIVATE
      "../lib"
      ${WPA_CTRL_PATH}/common

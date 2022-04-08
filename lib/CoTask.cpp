@@ -528,6 +528,7 @@ void CoDispatcher::ScavengeTasks()
             catch (const std::exception &e)
             {
                 Log().Error(SS("Coroutine Thread exited abnormally. (" << e.what() << ")"));
+                std::terminate();
             }
             i = coroutineThreads.erase(i);
         }

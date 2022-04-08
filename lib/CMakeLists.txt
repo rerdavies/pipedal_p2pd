@@ -30,19 +30,21 @@ add_library(cotask SHARED
 ./CoExec.cpp
 ./OsLinux.cpp
 
+ ./AsanOptions.cpp
 )
 
 
 target_include_directories(cotask PRIVATE "common" )
 
-target_link_libraries(cotask PRIVATE pthread)
+target_link_libraries(cotask PUBLIC pthread  uuid)
 
 
 add_executable(taskTest
     TaskTest.cpp
-)
+    ./AsanOptions.cpp
+    )
 
-target_link_libraries(taskTest pthread cotask)
+target_link_libraries(taskTest cotask)
 
 add_test(NAME TaskTest COMMAND taskTest)
 
@@ -50,6 +52,7 @@ add_test(NAME TaskTest COMMAND taskTest)
 
 add_executable(coTaskTest
     CoTaskTest.cpp
+    ./AsanOptions.cpp
 )
 
 
@@ -60,6 +63,8 @@ add_test(NAME CoTaskTest COMMAND coTaskTest)
 
 add_executable(coServiceTest
     CoServiceTest.cpp
+    ./AsanOptions.cpp
+
 )
 
 target_link_libraries(coServiceTest pthread cotask)
@@ -68,6 +73,8 @@ add_test(NAME CoServiceTest COMMAND coServiceTest)
 
 add_executable(asyncIoTest
     AsyncIoTest.cpp
+    ./AsanOptions.cpp
+
 )
 
 
@@ -86,6 +93,8 @@ add_test(NAME AsyncExecTest COMMAND asyncExecTest)
 
 add_executable(coEventTest
     CoEventTest.cpp
+    ./AsanOptions.cpp
+
 )
 
 target_link_libraries(coEventTest pthread cotask)
@@ -95,6 +104,8 @@ add_test(NAME CoEventTest COMMAND coEventTest)
 
 add_executable(shutdownTest
     ShutdownTest.cpp
+    ./AsanOptions.cpp
+
 )
 
 target_link_libraries(shutdownTest pthread cotask)

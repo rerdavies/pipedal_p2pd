@@ -41,7 +41,7 @@ namespace cotask
      *      class MyMutex {
      *           CoConditionVariable cv;
      *           bool locked = false;
-     *           Task<> Lock() 
+     *           Task<> CoLock() 
      *           {
      *                cv.Wait([] () {
      *                     if (locked) return false; // suspend
@@ -216,9 +216,24 @@ namespace cotask
         struct Awaiter
         {
             bool signaled = false;
+            std::exception_ptr exceptionPtr;
             std::function<bool(void)> conditionTest;
             std::chrono::milliseconds timeout;
             CoServiceCallback<void> *pCallback = nullptr;
+            void UnhandledException()
+            {
+                exceptionPtr = std::current_exception();
+            }
+            void SetComplete()
+            {
+                if (exceptionPtr)
+                {
+                    pCallback->SetException(exceptionPtr);
+                } else {
+                    pCallback->SetComplete();
+                }
+                pCallback = nullptr;
+            }
         };
         std::vector<Awaiter *> awaiters;
 
@@ -229,7 +244,7 @@ namespace cotask
     /**
      * @brief Prevents simultaneous execution of code or resources.
      * 
-     * Only one coroutine can hold a lock on the CoMutex at any given time. CoMutexes are non-reentrant. Calling Lock() on a CoMutex for which
+     * Only one coroutine can hold a lock on the CoMutex at any given time. CoMutexes are non-reentrant. Calling CoLock() on a CoMutex for which
      * you already hold a lock will deadlock.
      * 
      */
@@ -244,16 +259,16 @@ namespace cotask
          * If another coroutine has aquired the CoMutex, the current coroutine will be suspended until 
          * the other thread calls UnLock().
          * 
-         * Locks are non-reentrant. Calling Lock() on a CoMutex that you already own will deadlock. Every call to Lock() should be balanced
+         * Locks are non-reentrant. Calling CoLock() on a CoMutex that you already own will deadlock. Every call to CoLock() should be balanced
          * with a corresponding call to release.
          */
-        [[nodiscard]] CoTask<> Lock();
+        [[nodiscard]] CoTask<> CoLock();
 
         /**
          * @brief Release the mutex.
          * 
          * Releasing the CoMutex allows other threads of execution to aquire the CoMutex. Any threads of execution that have been suspended 
-         * in a call to Lock() will be resumed.
+         * in a call to CoLock() will be resumed.
          */
         void Unlock();
 
@@ -265,14 +280,14 @@ namespace cotask
     /**
      * @brief RAII container for CoMutex.
      * 
-     * Coroutine equivalemt of std::lock_guard. Note that, unlike a std::lock_guard, a Lock() call must be made (and co-awaited) after 
+     * Coroutine equivalemt of std::lock_guard. Note that, unlike a std::lock_guard, a CoLock() call must be made (and co-awaited) after 
      * constructing the object.
      * 
      * Usage:
      *
      *     {
      *          CoLockGuard lock;
-     *          co_await lock.Lock(mutex);
+     *          co_await lock.CoLock(mutex);
      * 
      *          ....
      *     }  // Unlock call made by the destructor.
@@ -299,10 +314,10 @@ namespace cotask
          * 
          * An Unlock() call will be made on the CoMutext when CoLockGuard is destructed.
          */
-        [[nodiscard]] CoTask<> Lock(CoMutex &mutex)
+        [[nodiscard]] CoTask<> CoLock(CoMutex &mutex)
         {
             pMutex = &mutex;
-            co_await mutex.Lock();
+            co_await mutex.CoLock();
             co_return;
         }
 

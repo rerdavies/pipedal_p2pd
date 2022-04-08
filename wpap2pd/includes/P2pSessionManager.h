@@ -1,29 +1,20 @@
 #pragma once
 
-#include "WpaCliWrapper.h"
+#include "WpaSupplicant.h"
+#include "P2pGroup.h"
 
 namespace p2p
 {
-    const size_t WPS_DEV_NAME_LEN = 32;
-    const size_t WPS_MANUFACTURER_MAX_LEN = 64;
-    const size_t WPS_MODEL_NAME_MAX_LEN = 32;
-    const size_t WPS_SERIAL_NUMBER_MAX_LEN = 32;
+    
+    constexpr size_t WPS_DEV_NAME_LEN = 32;
+    constexpr size_t WPS_MANUFACTURER_MAX_LEN = 64;
+    constexpr size_t WPS_MODEL_NAME_MAX_LEN = 32;
+    constexpr size_t WPS_SERIAL_NUMBER_MAX_LEN = 32;
 
-    struct P2pGroup
+    struct P2pDeviceInfo
     {
-        P2pGroup() { }
-        P2pGroup(const WpaEvent &event);
-        std::string interface;
-        bool go = false;
-        std::string ssid;
-        uint32_t freq = 0;
-        std::string passphrase;
-        std::string go_dev_addr;
-    };
-    struct P2pDevice
-    {
-        P2pDevice() {}
-        P2pDevice(const WpaEvent &event);
+        P2pDeviceInfo() {}
+        P2pDeviceInfo(const WpaEvent &event);
         std::string address;
         std::string p2p_dev_addr;
         std::string pri_dev_type;
@@ -45,39 +36,63 @@ namespace p2p
         uint8_t go_intent;
     };
 
-    class P2pSessionManager : public WpaCliWrapper
+    class P2pSessionManager : public WpaSupplicant
     {
     public:
-        using base = WpaCliWrapper;
-        const std::list<P2pDevice> &GetDevices() const { return devices; }
+        P2pSessionManager();
+        using base = WpaSupplicant;
+        const std::list<P2pDeviceInfo> &GetDevices() const { return devices; }
 
+        virtual void SetLog(std::shared_ptr<ILog> log);
+        CoTask<> Open(const std::string &interfaceName);
+        bool IsComplete() { return isComplete; }
     protected:
+        void SetComplete() {
+            isComplete = true;
+        }
         virtual void InitWpaConfig();
         virtual void SetUpPersistentGroup();
-        virtual void OnEvent(Source source, WpaEvent &event);
+        virtual void OnEvent(const WpaEvent &event);
         virtual CoTask<> CoOnInit();
+        virtual CoTask<> CoOnUnInit();
         virtual void OnDevicesChanged() {}
-        virtual void MaybeCreateNetwork(const std::vector<WpaNetwork> &networks);
-        virtual void MaybeEnableNetwork(const std::vector<WpaNetwork> &networks);
+        virtual void MaybeEnableNetwork(const std::vector<WpaNetworkInfo> &networks);
 
+        // P2p event handlers.
         virtual void OnP2pGoNegRequest(const P2pGoNegRequest &request);
-        void OnGroupStarted(const WpaEvent&event);
-        void OnGroupStopped(const WpaEvent&event);
+        virtual void OnProvDiscShowPin(const WpaEvent &event);
+        void OnProvDiscPbcReq(const WpaEvent &event);
+
+        std::unique_ptr<P2pGroup> OnGroupStarted(const P2pGroupInfo &groupInfo);
+        void OnGroupRemoved(const WpaEvent&event);
+        void SetP2pProperty(const std::string &name, const std::string &value);
 
     private:
-        std::unique_ptr<P2pGroup> activeGroup;
+        bool isComplete = false;
+        void StartServiceDiscovery();
+        void StopServiceDiscovery();
+        CoTask<> KeepAliveProc();
+        CoTask<> ScanProc();
+
+        void PreAuthorize();
+        virtual void OpenChannel(const std::string &interfaceName,bool withEvents);
+        int FindNetwork();
+        int networkId;
+        std::string networkBsid;
+        std::vector<std::unique_ptr<P2pGroup>> activeGroups;
+
         bool addingGroup = false;
         WpaEventMessage sychronousMessageToWaitFor = WpaEventMessage::WPA_INVALID_MESSAGE;
         void SynchronousWaitForMessage(WpaEventMessage message, std::chrono::milliseconds timeout);
 
         int persistentGroup = -1;
         bool wpaConfigChanged = false;
-        std::list<P2pDevice> devices;
+        std::list<P2pDeviceInfo> devices;
         int myNetwork = -1;
-        std::vector<WpaNetwork> networks;
-        void OnDeviceFound(P2pDevice &&device);
+        std::vector<WpaNetworkInfo> networks;
+        void OnDeviceFound(P2pDeviceInfo &&device);
         void OnDeviceLost(std::string p2p_dev_addr);
-        std::vector<WpaScanResult> scanResults;
+        std::vector<WpaScanInfo> scanResults;
     };
 }
 

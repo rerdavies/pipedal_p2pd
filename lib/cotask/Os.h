@@ -87,5 +87,7 @@ namespace cotask
           
         void SetThreadBackgroundPriority();
 
+        std::string MakeUuid();
+
     }
 }

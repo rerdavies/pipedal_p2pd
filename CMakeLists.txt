@@ -23,7 +23,7 @@ if (CMAKE_BUILD_TYPE MATCHES [Dd]ebug)
 message(STATUS "Address Sanitizer enabled.")
 
 add_compile_options("-fsanitize=address")
-add_link_options("-fsanitize=address" "-static-libasan" )
+add_link_options("-fsanitize=address")
 
 
 

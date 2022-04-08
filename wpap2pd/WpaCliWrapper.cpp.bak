@@ -1,4 +1,4 @@
-#include "includes/WpaCliWrapper.h"
+#include "includes/WpaSupplicant.h"
 #include "cotask/Os.h"
 #include "cotask/CoEvent.h"
 #include "ss.h"
@@ -9,13 +9,13 @@ using namespace std;
 
 const char *WPA_CONTROL_SOCKET_DIR = "/var/run/wpa_supplicant";
 
-// CoTask<> WpaCliWrapper::WriteMessage(const std::string &message)
+// CoTask<> WpaSupplicant::WriteMessage(const std::string &message)
 // {
 //     co_await p2pSocket.CoWriteLine(message);
 //     co_return;
 // }
 
-CoTask<> WpaCliWrapper::ReadP2pMessages(std::function<void(void)> onClosed)
+CoTask<> WpaSupplicant::ReadP2pMessages(std::function<void(void)> onClosed)
 {
     co_await CoBackground();
 
@@ -54,7 +54,7 @@ CoTask<> WpaCliWrapper::ReadP2pMessages(std::function<void(void)> onClosed)
 
 }
 
-CoTask<> WpaCliWrapper::ReadWlanMessages(std::function<void(void)> onClosed)
+CoTask<> WpaSupplicant::ReadWlanMessages(std::function<void(void)> onClosed)
 {
     co_await CoBackground();
     WpaEvent event;
@@ -89,7 +89,7 @@ CoTask<> WpaCliWrapper::ReadWlanMessages(std::function<void(void)> onClosed)
     }
 }
 
-CoTask<> WpaCliWrapper::Run(int argc, const char *const *argv)
+CoTask<> WpaSupplicant::Run(int argc, const char *const *argv)
 {
     try
     {
@@ -151,7 +151,7 @@ CoTask<> WpaCliWrapper::Run(int argc, const char *const *argv)
 }
 
 #ifdef JUNK
-CoTask<std::vector<std::string>> WpaCliWrapper::ReadToPrompt(std::chrono::milliseconds timeout)
+CoTask<std::vector<std::string>> WpaSupplicant::ReadToPrompt(std::chrono::milliseconds timeout)
 {
     std::vector<std::string> response;
     while (true)
@@ -200,6 +200,6 @@ CoTask<std::vector<std::string>> WpaCliWrapper::ReadToPrompt(std::chrono::millis
 }
 #endif
 
-void WpaCliWrapper::Terminate() {
+void WpaSupplicant::Terminate() {
     Dispatcher().PostQuit();
 }

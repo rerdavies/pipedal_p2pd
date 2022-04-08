@@ -21,9 +21,9 @@ namespace cotask
     public:
         virtual ~ILog() {}
 
-        void SetLogLevel(LogLevel logLevel) { this->logLevel = logLevel; }
+        virtual void SetLogLevel(LogLevel logLevel) { this->logLevel = logLevel; }
 
-        LogLevel GetLogLevel() const { return this->logLevel; }
+        virtual LogLevel GetLogLevel() const { return this->logLevel; }
 
         void Debug(const std::string &message)
         {

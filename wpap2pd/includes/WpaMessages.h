@@ -11,6 +11,8 @@ enum class WpaEventMessage {
     WPA_INVALID_MESSAGE = -1,
     
     WPA_UNKOWN_MESSAGE = 0,         // "UNKNOWN"
+
+    WPA_P2P_INFO,    // P2P: 
 /** Interactive request for identity/password/pin */
    WPA_CTRL_REQ,         // "CTRL-REQ-"
 

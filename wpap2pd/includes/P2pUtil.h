@@ -94,4 +94,29 @@ namespace p2p {
      */
     std::vector<std::string> splitWpaFlags(const std::string &value);
 
+    /**
+     * @brief return a string containing random alpha-numeric characters.
+     * 
+     * @param length 
+     * @return std::string 
+     */
+    std::string randomText(size_t length);
+    
+    namespace detail {
+        template <typename F>
+        struct FinalAction {
+            FinalAction(F f) : clean_{f} {}
+        ~FinalAction() { if(enabled_) clean_(); }
+            void disable() { enabled_ = false; };
+        private:
+            F clean_;
+            bool enabled_{true}; 
+        };
+    } // namespace
+
+    template <typename F>
+    detail::FinalAction<F> finally(F f) {
+        return detail::FinalAction<F>(f); 
+    }
+
 } // namepace.

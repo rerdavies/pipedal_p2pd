@@ -1,0 +1,1 @@
+build/wpap2pd/wpap2pd  --trace-messages --log debug

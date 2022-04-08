@@ -224,9 +224,9 @@ CoTask<> CoFile::CoOpen(const std::filesystem::path &path, CoFile::OpenMode mode
     co_return;
 }
 
-CoTask<int> CoFile::CoRead(void *data, size_t length, std::chrono::milliseconds timeout)
+CoTask<size_t> CoFile::CoRead(void *data, size_t length, std::chrono::milliseconds timeout)
 {
-    int totalRead = 0;
+    size_t totalRead = 0;
 
     char *pData = ((char *)data);
 
@@ -236,7 +236,7 @@ CoTask<int> CoFile::CoRead(void *data, size_t length, std::chrono::milliseconds 
     while (length > 0)
     {
 
-        int nRead = read(this->file_fd, pData, length);
+        ssize_t nRead = read(this->file_fd, pData, length);
         if (nRead == 0)
         {
             co_return totalRead;
@@ -265,6 +265,49 @@ CoTask<int> CoFile::CoRead(void *data, size_t length, std::chrono::milliseconds 
     }
     co_return totalRead;
 }
+
+CoTask<size_t> CoFile::CoRecv(void *data, size_t length, std::chrono::milliseconds timeout)
+{
+    size_t totalRead = 0;
+
+    char *pData = ((char *)data);
+
+
+    readReady = false;
+    // read until full, or until there is NO MORE!
+    while (length > 0)
+    {
+
+        int nRead = recv(this->file_fd, pData, length,0);
+        if (nRead == 0)
+        {
+            co_return totalRead;
+        } else
+        if (nRead < 0)
+        {
+            if (errno == EAGAIN)
+            {
+                if (totalRead != 0)
+                {
+                    co_return totalRead;
+                }
+                co_await IoWait(WaitOperation::Read,this,timeout);
+            }
+            else
+            {
+                CoIoException::ThrowErrno();
+            }
+        }
+        else
+        {
+            totalRead += nRead;
+            length -= nRead;
+            pData += nRead;
+        }
+    }
+    co_return totalRead;
+}
+
 
 static std::chrono::milliseconds Now()
 {
@@ -302,6 +345,36 @@ CoTask<> CoFile::CoWrite(const void *data, size_t length, std::chrono::milliseco
             totalWritten += nWritten;
             length -= nWritten;
             p += nWritten;
+        }
+    }
+}
+CoTask<> CoFile::CoSend(const void *data, size_t length, std::chrono::milliseconds timeout)
+{
+
+    std::chrono::milliseconds expiryTime = Now() + timeout;
+    this->writeReady = false;
+    ssize_t totalWritten = 0;
+    const char *p = (char *)data;
+    while (true) //if the length is zero, it could be a zero-length datagram.
+    {
+        ssize_t nWritten = send(this->file_fd, p, length,0);
+        if (nWritten < 0)
+        {
+            if (errno == EAGAIN)
+            {
+                co_await IoWait(WaitOperation::Write,this,timeout);
+            }
+            else
+            {
+                CoIoException::ThrowErrno();
+            }
+        }
+        else
+        {
+            totalWritten += nWritten;
+            length -= nWritten;
+            p += nWritten;
+            if (length == 0) break;
         }
     }
 }

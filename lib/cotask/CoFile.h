@@ -103,7 +103,31 @@ namespace cotask {
          * will be returned before the exception is thrown.
          * 
          */
-        CoTask<int> CoRead(void *data, size_t length, std::chrono::milliseconds timeout = -1ms);
+        CoTask<size_t> CoRead(void *data, size_t length, std::chrono::milliseconds timeout = -1ms);
+
+        /**
+         * @brief Receive a datagram of data.
+         * 
+         * @param data The buffer into which to read.
+         * @param length The maximum number of bytes to read.
+         * @param timeout Timeout in milliseconds.
+         * @return Task<int> The number of bytes read. 0 on end of file.
+         * 
+         * The return value indicates how many bytes were read. Generally, this method does not return a full buffer; if there is any
+         * data waiting in the file, it is returned immediately, whether the buffer is full or not.
+         * 
+         * A CoTimeoutException is thrown if the operation times out. The state of the read data is determinated. Partially read data 
+         * will be returned before the exception is thrown.
+         * 
+         * The principle difference between CoRead() and CoRecv() is that CoRecv() expecteds datagrams, including 
+         * zero-length datagrams, wherease CoRead()'s behaviour is formally undefined if a zero-length
+         * datagram is received; and CoRead will attempt to combine multiple packets into a single read response if multiple 
+         * packets are available, whereas CoRecv will never coallesce packets. However, there may be other differences as well. To be 
+         * safe, use CoRecv for datagram sockets.
+         * 
+         */
+        CoTask<size_t> CoRecv(void *data, size_t length, std::chrono::milliseconds timeout = NO_TIMEOUT);
+
         /**
          * @brief Read a line of data.
          * 
@@ -124,8 +148,32 @@ namespace cotask {
          * 
          * Always attempts to write the entire buffer. If a timeout occurs, a CoTimeoutException is thrown. After a timeout, the amount of data written 
          * is indeterminate.
+         * 
          */
         CoTask<> CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout = -1ms);
+
+        /**
+         * @brief Send data on a socket.
+         * 
+         * @param data The buffer of data to write.
+         * @param length The number of bytes to write (may be zero).
+         * @param timeout (optional) Maximum time to wait for the write to complete.
+         * @return Task<> 
+         * @throws CoTimeoutException
+         * 
+         * Write a datagram of data on a socket.
+         * 
+         * The principle difference between CoWrite, and CoSend is that CoSend will correctly
+         * handle zero-length datagrams; but the behavior of CoWrite is undefined in this case. But 
+         * there may be other differences as well. 
+         * 
+         * If a write with length of zero is made, CoWrite returns immediately without
+         * performing an operation on the underlying file handle. 
+         * 
+         * On linux, CoWrite calls write(), whereas CoSend() calls send().
+         */
+        CoTask<> CoSend(const void *data, size_t length, std::chrono::milliseconds timeout = -1ms);
+
 
 
         /**

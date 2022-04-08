@@ -4,6 +4,7 @@
 #include "stddef.h"
 #include <cctype>
 #include <iomanip>
+#include <string.h>
 
 using namespace p2p;
 
@@ -36,6 +37,9 @@ bool skipBalancedPair(const char *line, const char **lineOut)
 }
 bool WpaEvent::ParseLine(const char *line)
 {
+    this->parameters.resize(0);
+    this->namedParameters.resize(0);
+    this->messageString.resize(0);  
 
     if (line[0] == '>')
     { // ignore prompt.
@@ -56,10 +60,23 @@ bool WpaEvent::ParseLine(const char *line)
     }
     if (*line != '>')
         return false;
+    ++line;
 
     this->priority = (EventPriority)priorityLevel;
 
-    ++line;
+    if (strncmp(line,"CTRL-REQ-",strlen("CTRL-REQ-")) == 0)
+    {
+        this->message = WpaEventMessage::WPA_CTRL_REQ;
+        this->parameters.push_back(line);
+        return true;
+    }
+    if (strncmp(line,"CTRL-RSP-",strlen("CTRL-RSP-")) == 0)
+    {
+        this->message = WpaEventMessage::WPA_CTRL_RSP;
+        this->parameters.push_back(line);
+        return true;
+    }
+
     pStart = line;
     while (*line != ' ' && *line != '\0')
     {
@@ -67,19 +84,26 @@ bool WpaEvent::ParseLine(const char *line)
     }
     std::string message{pStart, (size_t)(line - pStart)};
 
+
+
     WpaEventMessage wpaMessage = GetWpaEventMessage(message);
     if (wpaMessage == WpaEventMessage::WPA_UNKOWN_MESSAGE)
     {
         this->messageString = message;
     }
-    else
-    {
-        this->messageString.resize(0);
-    }
     this->message = wpaMessage;
 
-    this->parameters.resize(0);
-    this->namedParameters.resize(0);
+
+
+    if (this->message == WpaEventMessage::WPA_P2P_INFO)
+    {
+        while (*line == ' ')
+        {
+            ++line;
+        }
+        this->parameters.push_back(line);
+        return true;
+    }
 
     while (true)
     {
@@ -197,7 +221,7 @@ std::string WpaEvent::UnquoteString(const std::string &value)
     return s.str();
 }
 
-std::string WpaEvent::ToString()
+std::string WpaEvent::ToString() const
 {
     std::stringstream s;
     s << '<' << (char)('0' + (int)priority) << '>';
