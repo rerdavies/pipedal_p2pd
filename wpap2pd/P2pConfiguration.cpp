@@ -101,11 +101,11 @@ p2p::static_vector<ConfigSerializerBase> configSerializers =
         SERIALIZER_ENTRY(p2p_ssid_postfix, "DIRECT-XX-postfix (appears on Android p2p Group names)"),
         SERIALIZER_ENTRY(wifiGroupFrequency, "Wifi frequency (kHz).\nShould almost always be  2412 (ch1),2437 (ch6), or 2462 (ch11)."),
 
-        SERIALIZER_ENTRY(p2p_model_name,"P2P Device info"),
-        SERIALIZER_ENTRY(p2p_model_number,""),
-        SERIALIZER_ENTRY(p2p_manufacturer,""),
-        SERIALIZER_ENTRY(p2p_serial_number,""),
-        SERIALIZER_ENTRY(p2p_device_type,""),
+        SERIALIZER_ENTRY(p2p_model_name, "P2P Device info"),
+        SERIALIZER_ENTRY(p2p_model_number, ""),
+        SERIALIZER_ENTRY(p2p_manufacturer, ""),
+        SERIALIZER_ENTRY(p2p_serial_number, ""),
+        SERIALIZER_ENTRY(p2p_device_type, ""),
 
         SERIALIZER_ENTRY(wlanInterface, "Wi-Fi configuration"),
         SERIALIZER_ENTRY(p2pInterface, ""),
@@ -113,23 +113,74 @@ p2p::static_vector<ConfigSerializerBase> configSerializers =
         SERIALIZER_ENTRY(p2p_go_vht, ""),
         SERIALIZER_ENTRY(p2p_go_he, ""),
         SERIALIZER_ENTRY(p2p_ip_address, "Ipv4 address for the P2P group interface"),
-        SERIALIZER_ENTRY(service_guid_file, 
-            "File containing the a globally-unique id identifying the service on this machine.\n"
-            "Syntax: 0a6045b0-1753-4104-b3e4-b9713b9cc356\n"),
-        SERIALIZER_ENTRY(service_guid, 
-            "GUID identifying the PiPedal service\n"
-            "(if service_guid_file is not provided.)"
-            ),
-        SERIALIZER_ENTRY(p2p_device_type, ""),
+        SERIALIZER_ENTRY(service_guid_file,
+                         "File containing the a globally-unique id identifying the service on this machine.\n"
+                         "Syntax: 0a6045b0-1753-4104-b3e4-b9713b9cc356\n"),
+        SERIALIZER_ENTRY(service_guid,
+                         "GUID identifying the PiPedal service\n"
+                         "(if service_guid_file is not provided.)"),
+
+        SERIALIZER_ENTRY(command_socket_address,
+                         "Name of the socket on which to listen for display, keypad, pbc interactions (optional).");
+
+        SERIALIZER_ENTRY(command_socket_group,
+                         "The group used to permission the command socket (must belong to this group to read or write the socket.).");
+
 
 };
 
-void P2pConfiguration::MakeUuid()
+/**
+ * @brief Create a new Gservice guid.
+ * 
+ * @return true if a write of the config file is required.
+ * @return false if no write is required.
+ */
+bool P2pConfiguration::MakeUuid()
 {
-    if (this->service_guid == "")
+    if (this->service_guid_file != "")
+    {
+        std::string uuid;
+        for (int retry = 0; /**/; ++retry)
+        {
+            try
+            {
+                ifstream f;
+                f.open(this->service_guid_file);
+                if (f.fail())
+                {
+                    throw logic_error("Can't read from " + this->service_guid_file);
+                }
+                f >> uuid;
+                this->service_guid = uuid;
+                return false; // success!
+            }
+            catch (const std::exception &e)
+            {
+            }
+            if (uuid == "")
+            {
+                uuid = os::MakeUuid();
+            }
+            std::ofstream f;
+            f.open(this->service_guid_file,ios_base::trunc);
+            if (f.fail())
+            {
+                if (retry == 5)
+                {
+                    throw logic_error("Can't write to " + this->service_guid_file);
+                }
+                os::msleep(500);
+            } else {
+                f << uuid << endl;
+            }
+        }
+    }
+    else if (this->service_guid == "")
     {
         this->service_guid = os::MakeUuid();
+        return true;
     }
+    return false;
 }
 void P2pConfiguration::Save(const std::filesystem::path &path)
 {
@@ -141,6 +192,12 @@ void P2pConfiguration::Save(const std::filesystem::path &path)
     {
         throw invalid_argument("Can't open " + path.string());
     }
+    Save(f);
+}
+void P2pConfiguration::Save(std::ostream&f)
+{
+    MakeUuid();
+
     bool firstLine = true;
     for (ConfigSerializerBase *serializer : configSerializers)
     {
@@ -233,21 +290,8 @@ void P2pConfiguration::Load(const std::filesystem::path &path)
             }
         }
     }
-    if (this->service_guid_file != "")
+    if (MakeUuid())
     {
-        ifstream f;
-        f.open(this->service_guid_file);
-        if (f.fail())
-        {
-            throw invalid_argument(
-                SS("Can't open file " << this->service_guid_file)
-            );
-        }
-        f >> this->service_guid;
-    }
-    if (this->service_guid == "")
-    {
-        MakeUuid();
         Save(path);
     }
 }
