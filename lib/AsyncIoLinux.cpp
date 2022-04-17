@@ -46,17 +46,30 @@ public:
         }
 
         AsyncIo::instance = this;
-        thread = std::make_unique<jthread>([this]() { ThreadProc(); });
     }
     ~AsyncIoLinux()
     {
-        terminating = true;
         thread = nullptr; // delete and join the thread.
         AsyncIo::instance = nullptr;
     }
 
+    virtual void Start()
+    {
+        if (!thread)
+        {
+            thread = std::make_unique<jthread>(
+                [this, stoken=ssource.get_token()]() { ThreadProc(stoken); });
+        }
+    }
+    virtual void Stop()
+    {
+        thread = nullptr;
+    }
+
+
 private:
-    bool terminating = false;
+    std::stop_source ssource;
+
     int epoll_fd = -1;
 
     class EpollEvent
@@ -77,6 +90,7 @@ private:
     virtual EventHandle WatchFile(int fileDescriptor, EventCallback callback) 
     {
         std::unique_lock lock{epollMutex};
+        Start();
 
         EventHandle handle = ++nextHandle;
         std::unique_ptr<EpollEvent> event = std::make_unique<EpollEvent>(handle,fileDescriptor,callback);
@@ -108,7 +122,7 @@ private:
         return false;
     }
 
-    void ThreadProc()
+    void ThreadProc(const std::stop_token& stopToken)
     {
         try
         {
@@ -116,7 +130,10 @@ private:
 
             while (true)
             {
-                if (terminating) break;
+                if (stopToken.stop_requested())
+                {
+                    break;
+                }
                 int result = epoll_wait(epoll_fd, events, sizeof(events) / sizeof(events[0]), 500);
                 if (result < 0)
                 {

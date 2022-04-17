@@ -92,6 +92,12 @@ namespace cotask
         LogLevel logLevel = LogLevel::Warning;
     };
 
+    /**
+     * @brief Writes log messages to stout.
+     * 
+     * The default logger.
+     * 
+     */
     class ConsoleLog : public ILog
     {
     private:
@@ -127,5 +133,49 @@ namespace cotask
         }
  
     };
+
+
+#ifdef __linux__
+    #include <syslog.h>
+    /**
+     * @brief Write log messages to the systemd journal. (Linux only)
+     * 
+     * Must be running under systemd for this to work.
+     * 
+     * Not that configuration log_level still controls which messages
+     * are sent to the systemd journal.
+     * 
+     */
+    class SystemdLog : public ILog
+    {
+
+
+    private:
+        std::mutex mutex_;
+    protected:
+        virtual void OnDebug(const std::string &message)
+        {
+            std::lock_guard lock {mutex_};
+            syslog(LOG_DEBUG, message.c_str());
+        }
+        virtual void OnInfo(const std::string &message)
+        {
+            std::lock_guard lock {mutex_};
+            syslog(LOG_NOTICE, message.c_str());
+        }
+        virtual void OnWarning(const std::string &message) 
+        {
+            std::lock_guard lock {mutex_};
+            syslog(LOG_WARNING, message.c_str());
+        }
+        virtual void OnError(const std::string &message) 
+        {
+            std::lock_guard lock {mutex_};
+            syslog(LOG_ERR, message.c_str());
+        }
+ 
+    };
+#endif
+
 
 } // namespace

@@ -27,7 +27,7 @@ add_executable(wpap2pd
     AsanOptions.cpp
 )
 target_compile_definitions(wpap2pd PRIVATE CONFIG_CTRL_IFACE CONFIG_CTRL_IFACE_UNIX)
-target_link_libraries(wpap2pd cotask uuid )
+target_link_libraries(wpap2pd cotask uuid systemd )
 target_include_directories(wpap2pd PRIVATE
      "../lib"
      ${WPA_CTRL_PATH}/common

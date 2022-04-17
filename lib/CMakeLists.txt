@@ -30,7 +30,6 @@ add_library(cotask SHARED
 ./CoExec.cpp
 ./OsLinux.cpp
 
- ./AsanOptions.cpp
 )
 
 

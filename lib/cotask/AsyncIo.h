@@ -43,6 +43,9 @@ namespace cotask
         virtual EventHandle WatchFile(int fileDescriptor, EventCallback callback) = 0;
         virtual bool UnwatchFile(EventHandle handle) = 0;
 
+        virtual void Start() = 0;
+        virtual void Stop() = 0;
+
     protected:
         static AsyncIo *instance;
     };

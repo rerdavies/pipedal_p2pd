@@ -54,6 +54,10 @@
                     "value": "${env:PATH}:${command:cmake.launchTargetDirectory}"
                 },
                 {
+                    "name": "ASAN_OPTIONS",
+                    "value": "detect_leaks=0"
+                },
+                {
                     "name": "OTHER_VALUE",
                     "value": "Something something"
                 }
@@ -69,7 +73,7 @@
             ]
         },
         {
-            "name": "(gdb) CMake",
+            "name": "(gdb) wpap2pd run",
             "type": "cppdbg",
             "request": "launch",
             // Resolved by CMake Tools:
@@ -110,7 +114,7 @@
             "request": "launch",
             // Resolved by CMake Tools:
             "program": "${command:cmake.launchTargetDirectory}/wpap2pd",
-            "args": ["-?" ],
+            "args": ["--print-config" ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [
@@ -119,6 +123,10 @@
                     // it gets resolved by CMake Tools:
                     "name": "PATH",
                     "value": "${env:PATH}:${command:cmake.launchTargetDirectory}"
+                },
+                {
+                    "name": "ASAN_OPTIONS",
+                    "value": "detect_leaks=0"
                 },
                 {
                     "name": "OTHER_VALUE",

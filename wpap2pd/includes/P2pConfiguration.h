@@ -62,10 +62,13 @@ namespace p2p
         P2pGroupConfiguration defaultGroupConfiguration;
 
 
+
         std::filesystem::path path;
-        void MakeUuid();
-        void Save() { Save(path); }
+        // returns true if a write of the config file is required.
+        bool  MakeUuid();
+        void Save(std::ostream &f);
         void Save(const std::filesystem::path &path);
+        void Save() { Save(path); }
         void Load(const std::filesystem::path &path);
 
     };
