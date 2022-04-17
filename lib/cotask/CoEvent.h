@@ -10,7 +10,7 @@
 namespace cotask
 {
 #ifndef DOXYGEN
-    namespace private_
+    namespace detail
     {
         class CoConditionaVariableImplementation;
     }
@@ -56,19 +56,29 @@ namespace cotask
      *           }
      *     };
      * 
+     * *Lifetime Management*
+     * 
+     * Destroying a condition variable will cause all awaiters to throw a CoClosedException at their earliest possible convenience.
+     * Handling of the CoClosedException can safely occur after the condition variable has been deleted; but after receiving a 
+     * CoCloseException, the CoConditionVariable must not be accessed again as it will almost definitely have been deleted.
+     * It is the caller's responsibility to manage the lifetime of associated data protected by the condition variable. Generally, the
+     *  safest approach is to _not_ catch the CoClosedException, and treat it as a signal to terminate the entire coroutine thread as expediently and 
+     * safely as possible.
      * 
      */
     class CoConditionVariable
     {
-        friend class private_::CoConditionaVariableImplementation;
+        friend class detail::CoConditionaVariableImplementation;
 
     public:
+        ~CoConditionVariable();
         /**
          * @brief Suspend execution until conditionTest returns true.
          * 
          * @param conditionTest An optional condition check (see remarks).
          * @param timeout An optional timeout. 
-         * @return Task<bool> false if a timeout occurred (for invocationgs taking a timeout parameter) 
+         * @return Task<> 
+         * @throws CoTimedOutException on timeout.
          * 
          * The conditionTest callback returns a boolean, indicating whether the 
          * current coroutine should be allowed to procede, or whether it should be suspended.
@@ -90,7 +100,7 @@ namespace cotask
          *     }
 
          */
-        [[nodiscard]] CoTask<bool> Wait(
+        [[nodiscard]] CoTask<> Wait(
             std::chrono::milliseconds timeout,
             std::function<bool(void)> conditionTest = nullptr);
 
@@ -209,13 +219,20 @@ namespace cotask
         template <class T>
         T Test(function<T(void)> testAction);
 
+
+        std::mutex&Mutex() { return mutex; }
     private:
         std::mutex mutex;
         bool ready = false;
+        uint32_t deleted = 0;
+
+        void CheckUseAfterFree();
 
         struct Awaiter
         {
             bool signaled = false;
+            bool closed = false;
+            CoConditionVariable *this_ = nullptr;
             std::exception_ptr exceptionPtr;
             std::function<bool(void)> conditionTest;
             std::chrono::milliseconds timeout;
@@ -226,13 +243,14 @@ namespace cotask
             }
             void SetComplete()
             {
+                auto t = pCallback;
+                pCallback = nullptr;
                 if (exceptionPtr)
                 {
-                    pCallback->SetException(exceptionPtr);
+                    t->SetException(exceptionPtr);
                 } else {
-                    pCallback->SetComplete();
+                    t->SetComplete();
                 }
-                pCallback = nullptr;
             }
         };
         std::vector<Awaiter *> awaiters;
@@ -300,9 +318,7 @@ namespace cotask
         {
             if (!pMutex)
             {
-                //throw std::exception("You must call Lock() after constructing.")
-                cerr << "You must call co_await Lock() after construction." << endl;
-                std::terminate();
+                Terminate("You must call co_await CoLock() after construction.");
             }
             pMutex->Unlock();
         }
@@ -325,19 +341,6 @@ namespace cotask
         CoMutex *pMutex = nullptr;
     };
 
-    class CoQueueClosedException : public CoException
-    {
-    public:
-        using base = CoException;
-
-        CoQueueClosedException()
-        {
-        }
-        const char *what() const noexcept
-        {
-            return "Queue closed.";
-        }
-    };
 
     /******* CoConditionVariable inlines ***************/
 

@@ -8,114 +8,11 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include "cotask/Os.h"
+#include "cotask/CoExceptions.h"
 
 using namespace cotask;
-using namespace cotask::private_;
+using namespace cotask::detail;
 using namespace std;
-
-bool CoFile::IsReady(WaitOperation op)
-{
-    switch (op)
-    {
-    case WaitOperation::Read:
-        return readReady;
-    case WaitOperation::Write:
-        return writeReady;
-    default:
-        throw std::invalid_argument("Invalid argument.");
-    }
-}
-void CoFile::SetReadyCallback(WaitOperation op, WaitInterface::callback callbackOnReady)
-{
-    std::lock_guard lock { callbackMutex };
-
-    switch (op)
-    {
-    case WaitOperation::Read:
-        this->readCallback = callbackOnReady;
-        break;
-    case WaitOperation::Write:
-        this->writeCallback = callbackOnReady;
-        break;
-    default:
-        throw std::invalid_argument("Invalid argument.");
-    }
-}
-void CoFile::ClearReadyCallback(WaitOperation op)
-{
-    std::lock_guard lock { callbackMutex };
-
-    switch (op)
-    {
-    case WaitOperation::Read:
-        this->readCallback = nullptr;
-        break;
-    case WaitOperation::Write:
-        this->writeCallback = nullptr;
-        break;
-    default:
-        throw std::invalid_argument("Invalid argument.");
-    }
-}
-
-auto IoWait(WaitOperation op, WaitInterface *waitInterface, std::chrono::milliseconds timeoutMs)
-{
-    struct Implementation
-    {
-        using return_type = void;
-        using callback_type = CoServiceCallback<void>;
-
-        ~Implementation() {
-
-        }
-        // arguments.
-        WaitOperation op;
-        WaitInterface *waitInterface = nullptr;
-        std::chrono::milliseconds timeoutMs;
-
-        callback_type *pCallback = nullptr;
-        
-
-
-        void Execute(callback_type *pCallback)
-        {
-            this->pCallback = pCallback;
-            if (waitInterface->IsReady(op))
-            {
-                pCallback->SetComplete();
-                return;
-            }
-            waitInterface->SetReadyCallback(op,[this]() {
-                this->waitInterface = nullptr;
-                this->pCallback->SetComplete();
-            });
-            if (timeoutMs > 0ms) {
-                pCallback->RequestTimeout(timeoutMs);
-            }
-        }
-        bool CancelExecute(callback_type *pCallback)
-        {
-            if (waitInterface)
-            {
-                waitInterface->ClearReadyCallback(op);
-                waitInterface = nullptr;
-            }
-            return true;
-        }
-        CoFile *file;
-        std::chrono::milliseconds timeout;
-    };
-
-    static_assert(IsVoidCoServiceImplementation<Implementation>);
-
-    using Awaitable = CoService<Implementation>;
-
-    Awaitable awaitable{};
-    awaitable.op = op;
-    awaitable.timeoutMs = timeoutMs;
-    awaitable.waitInterface = waitInterface;
-    return awaitable;
-}
 
 CoFile::CoFile(int file_fd)
     : file_fd(file_fd)
@@ -136,24 +33,17 @@ void CoFile::WatchFile(int fd)
         readReady = true;
         writeReady = true;
         eventHandle = AsyncIo::GetInstance().WatchFile(fd, [this](AsyncIo::EventData eventData) {
-            std::lock_guard lock { callbackMutex };
-
             if (eventData.readReady || eventData.hasError)
             {
-                this->readReady = true;
-                if (readCallback) { // RACE CONDITION HERE.
-                    readCallback();
-                    readCallback = nullptr;
-                }
+                readCv.Notify([this] {
+                    this->readReady = true;
+                });
             }
             if (eventData.writeReady || eventData.hasError)
             {
-                this->writeReady = true;
-                if (writeCallback)
-                {
-                    writeCallback();
-                    writeCallback = nullptr;
-                }
+                writeCv.Notify([this] {
+                    this->writeReady = true;
+                });
             }
         });
     }
@@ -161,40 +51,128 @@ void CoFile::WatchFile(int fd)
 
 CoFile::~CoFile()
 {
+    // pump messages until i/o operations have cleared.
     Close();
+    // xxx: pump messages until all i/o operations have cleared.
+
+    while (true)
+    {
+        // run until idle (no waiting for delayed events.)
+        CoDispatcher::CurrentDispatcher().PumpMessages();
+
+        // wait until no operations end up in pending state.
+        if (closeCv.Test<bool>([this]() {
+                return this->pendingOperations == 0;
+            }))
+        {
+            break;
+        }
+        // wait for delayed events, and try again.
+        CoDispatcher::CurrentDispatcher().PumpMessages(true);
+    }
+    deleted = true;
 }
+
 void CoFile::Close()
 {
-    if (file_fd != -1)
+    if (closeCv.Test<bool>([this]() {
+        return this->closed || this->closing;
+    }))
     {
-        WatchFile(-1);
-        close(file_fd);
-        file_fd = -1;
+        return;
     }
+    CoClose().GetResult();
+}
+
+void CoFile::CheckUseAfterDelete()
+    {
+        if (this->deleted) 
+    {
+        Terminate("Use after free!");
+    }
+}
+CoTask<> CoFile::CoClose()
+{
+    {
+        std::lock_guard lock{closeCv.Mutex()};
+        CheckUseAfterDelete();
+        if (this->closed)
+            co_return;
+        if (this->closing)
+            co_return;
+        this->closed = true;
+        this->closing = true;
+    }
+
+    readCv.NotifyAll([this] {
+        this->closed = true; // because memory barrier. Must be readable before fd is read.
+    });
+    writeCv.NotifyAll([this] {
+        this->closed = true; // because memory barrier.  Must be readable before fd is read.
+    });
+    {
+        std::lock_guard lock{closeCv.Mutex()};
+        close(this->file_fd);
+        WatchFile(-1);
+        this->file_fd = -1;
+    }
+
+
+
+    // pump until suspended tasks go to zero.
+    co_await closeCv.Wait([this] {
+        return this->pendingOperations == 0;
+    });
 }
 
 void CoFile::Attach(int file_fd)
 {
-    Close();
+    std::unique_lock lock{closeCv.Mutex()};
+    if (this->file_fd == -1 && file_fd == -1)
+    {
+        return;
+    }
+    if (this->file_fd != -1)
+        throw logic_error("File is already open.");
+
     // set O_NON_BLOCKING
     if (file_fd != -1)
     {
-        os::SetFileNonBlocking(file_fd,true);
+        os::SetFileNonBlocking(file_fd, true);
     }
     this->file_fd = file_fd;
+    this->closed = false;
+    this->closing = false;
     WatchFile(this->file_fd);
 }
 int CoFile::Detach()
 {
-    int result = this->file_fd;
-    WatchFile(-1);
-    this->file_fd = -1;
-    os::SetFileNonBlocking(result,false);
+    int oldFd = -1;
+    {
+        std::unique_lock lock{closeCv.Mutex()};
+        oldFd = this->file_fd;
+        WatchFile(-1);
+        this->file_fd = -1;
+        this->closed = true;
+        os::SetFileNonBlocking(oldFd, false);
+    }
+    readCv.Notify([this]() {
+        this->closed = true; // ensure cross-thread memory barrier.
+    });
+    writeCv.Notify([this]() {
+        this->closed = true; // ensure cross-thread memory barrier.
+    });
 
-    return result;
+    return oldFd;
 }
 CoTask<> CoFile::CoOpen(const std::filesystem::path &path, CoFile::OpenMode mode)
 {
+
+    std::unique_lock lock{closeCv.Mutex()};
+    CheckUseAfterDelete();
+
+    if (this->file_fd != -1)
+        throw logic_error("File is already open.");
 
     int file_fd = -1;
     constexpr int PERMS = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH; // rw-rw-r--
@@ -202,17 +180,17 @@ CoTask<> CoFile::CoOpen(const std::filesystem::path &path, CoFile::OpenMode mode
     {
     case OpenMode::ReadWrite:
     {
-        file_fd = open(path.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC,PERMS);
+        file_fd = open(path.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC, PERMS);
     }
     break;
     case OpenMode::Read:
         file_fd = open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         break;
     case OpenMode::Create:
-        file_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NONBLOCK , PERMS);
+        file_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NONBLOCK, PERMS);
         break;
     case OpenMode::Append:
-        file_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND |O_NONBLOCK , PERMS);
+        file_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_NONBLOCK, PERMS);
         break;
     }
     if (file_fd == -1)
@@ -220,36 +198,56 @@ CoTask<> CoFile::CoOpen(const std::filesystem::path &path, CoFile::OpenMode mode
         CoIoException::ThrowErrno();
     }
     this->file_fd = file_fd;
+    this->closed = false;
+    this->closing = false;
+
     WatchFile(file_fd);
+
     co_return;
 }
 
 CoTask<size_t> CoFile::CoRead(void *data, size_t length, std::chrono::milliseconds timeout)
 {
+    OpsLock opLock(this); // count outstanding iops;
+
     size_t totalRead = 0;
 
     char *pData = ((char *)data);
 
+    std::unique_lock lock{readCv.Mutex()};
+    CheckUseAfterDelete();
 
-    readReady = false;
     // read until full, or until there is NO MORE!
     while (length > 0)
     {
 
+        if (closed)
+        {
+            throw CoIoClosedException();
+        }
         ssize_t nRead = read(this->file_fd, pData, length);
         if (nRead == 0)
         {
             co_return totalRead;
-        } else
-        if (nRead < 0)
+        }
+        else if (nRead < 0)
         {
-            if (errno == EAGAIN)
+            if (errno == EAGAIN || errno == EWOULDBLOCK) // Posix: it's unspecified which we'll get. Both mean the same.
             {
                 if (totalRead != 0)
                 {
                     co_return totalRead;
                 }
-                co_await IoWait(WaitOperation::Read,this,timeout);
+                readReady = false;
+                lock.unlock();
+
+                co_await readCv.Wait(
+                    timeout,
+                    [this]() {
+                        return this->readReady || this->closed;
+                    });
+                 
+                lock.lock();
             }
             else
             {
@@ -268,72 +266,82 @@ CoTask<size_t> CoFile::CoRead(void *data, size_t length, std::chrono::millisecon
 
 CoTask<size_t> CoFile::CoRecv(void *data, size_t length, std::chrono::milliseconds timeout)
 {
-    size_t totalRead = 0;
+    OpsLock opLock(this); // count outstanding iops;
 
     char *pData = ((char *)data);
 
+    std::unique_lock lock{readCv.Mutex()};
+    CheckUseAfterDelete();
 
-    readReady = false;
-    // read until full, or until there is NO MORE!
-    while (length > 0)
+    while (true)
     {
 
-        int nRead = recv(this->file_fd, pData, length,0);
-        if (nRead == 0)
+        if (closed)
         {
-            co_return totalRead;
-        } else
+            throw CoIoClosedException();
+        }
+        int nRead = recv(this->file_fd, pData, length, 0);
+        //cout << "recv  nRead = " <<nRead << endl;
         if (nRead < 0)
         {
-            if (errno == EAGAIN)
+            if (errno == EAGAIN || errno == EWOULDBLOCK) // Posix: it's unspecified which we'll get. Both mean the same.
             {
-                if (totalRead != 0)
-                {
-                    co_return totalRead;
-                }
-                co_await IoWait(WaitOperation::Read,this,timeout);
+                readReady = false;
+                lock.unlock();
+
+                co_await readCv.Wait(
+                    timeout,
+                    [this]() {
+                        bool ready =  this->readReady || this->closed;
+                        //cout << "recv ready: " << ready << endl;
+                        return ready;
+                    });
+
+                lock.lock();
+                continue;
             }
             else
             {
                 CoIoException::ThrowErrno();
             }
         }
-        else
-        {
-            totalRead += nRead;
-            length -= nRead;
-            pData += nRead;
-        }
+        co_return nRead;
     }
-    co_return totalRead;
-}
-
-
-static std::chrono::milliseconds Now()
-{
-    auto now = std::chrono::steady_clock::now();
-    auto duration = now.time_since_epoch();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(duration);
 }
 
 CoTask<> CoFile::CoWrite(const void *data, size_t length, std::chrono::milliseconds timeout)
 {
-    std::chrono::milliseconds expiryTime = Now() + timeout;
-    this->writeReady = false;
-    ssize_t totalWritten = 0;
+    OpsLock opLock(this); // count outstanding iops;
+
+    std::unique_lock lock{writeCv.Mutex()};
+    CheckUseAfterDelete();
+
     const char *p = (char *)data;
     while (length != 0)
     {
+        if (closed)
+        {
+            throw CoIoClosedException();
+        }
         ssize_t nWritten = write(this->file_fd, p, length);
         if (nWritten == 0)
         {
-            throw std::logic_error("Write returned zero. Results are *unspecified* (POSIX 1.1)");
+            throw std::logic_error("Write returned zero. Results are *unspecified* (POSIX 1.1). Should you be using CoRecv?");
         }
         if (nWritten < 0)
         {
-            if (errno == EAGAIN)
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                co_await IoWait(WaitOperation::Write,this,timeout);
+                lock.unlock();
+
+                co_await writeCv.Wait(
+                    timeout,
+                    [this]() {
+                        return this->writeReady || this->closed;
+                    });
+                
+                lock.lock();
+                continue;
             }
             else
             {
@@ -342,27 +350,42 @@ CoTask<> CoFile::CoWrite(const void *data, size_t length, std::chrono::milliseco
         }
         else
         {
-            totalWritten += nWritten;
             length -= nWritten;
             p += nWritten;
         }
     }
+    co_return;
 }
 CoTask<> CoFile::CoSend(const void *data, size_t length, std::chrono::milliseconds timeout)
 {
+    OpsLock opLock(this); // count outstanding iops;
 
-    std::chrono::milliseconds expiryTime = Now() + timeout;
     this->writeReady = false;
-    ssize_t totalWritten = 0;
     const char *p = (char *)data;
+
+    std::unique_lock lock{writeCv.Mutex()};
+    CheckUseAfterDelete();
+
     while (true) //if the length is zero, it could be a zero-length datagram.
     {
-        ssize_t nWritten = send(this->file_fd, p, length,0);
+        if (closed)
+        {
+            throw CoIoClosedException();
+        }
+        ssize_t nWritten = send(this->file_fd, p, length, 0);
         if (nWritten < 0)
         {
-            if (errno == EAGAIN)
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                co_await IoWait(WaitOperation::Write,this,timeout);
+                writeReady = false;
+                lock.unlock();
+
+                co_await this->writeCv.Wait(
+                    timeout,
+                    [this]() {
+                        return this->writeReady || this->closed;
+                    });
+                lock.lock();
             }
             else
             {
@@ -371,12 +394,13 @@ CoTask<> CoFile::CoSend(const void *data, size_t length, std::chrono::millisecon
         }
         else
         {
-            totalWritten += nWritten;
             length -= nWritten;
             p += nWritten;
-            if (length == 0) break;
+            if (length == 0)
+                break;
         }
     }
+    co_return;
 }
 
 void CoFile::CreateSocketPair(CoFile &sender, CoFile &receiver)
@@ -392,13 +416,14 @@ void CoFile::CreateSocketPair(CoFile &sender, CoFile &receiver)
     receiver.Attach(sv[1]);
 }
 
-CoTask<> CoFile::CoWriteLine(const std::string&line, std::chrono::milliseconds timeout)
+CoTask<> CoFile::CoWriteLine(const std::string &line, std::chrono::milliseconds timeout)
 {
-    co_await CoWrite(line.c_str(),line.length(),timeout);
+
+    co_await CoWrite(line.c_str(), line.length(), timeout);
     char endl = '\n';
-    co_await CoWrite(&endl,1,timeout);
+    co_await CoWrite(&endl, 1, timeout);
 }
-CoTask<bool> CoFile::CoReadLine(std::string*result)
+CoTask<bool> CoFile::CoReadLine(std::string *result)
 {
     while (true)
     {
@@ -414,7 +439,7 @@ CoTask<bool> CoFile::CoReadLine(std::string*result)
 
             lineSS << c;
         }
-        int nRead = co_await CoRead(lineBuffer,sizeof(lineBuffer));
+        int nRead = co_await CoRead(lineBuffer, sizeof(lineBuffer));
         if (nRead == 0)
         {
             *result = lineSS.str();
@@ -424,5 +449,4 @@ CoTask<bool> CoFile::CoReadLine(std::string*result)
         lineHead = 0;
         lineTail = nRead;
     }
-
 }

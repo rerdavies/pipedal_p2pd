@@ -3,30 +3,16 @@
 #include <functional>
 #include <string>
 #include <sstream>
+#include "CoEvent.h"
 
 
 namespace cotask {
-    #ifndef DOXYGEN
-    namespace private_ {
-        enum WaitOperation {
-            Read,
-            Write
-        };
-        class WaitInterface {
-        public:
-            using callback = std::function<void(void)>;
-            virtual bool IsReady(WaitOperation op) = 0;
-            virtual void SetReadyCallback(WaitOperation op,callback callbackOnReady) = 0;
-            virtual void ClearReadyCallback(WaitOperation op) = 0;
-        };
-    }
-    #endif
 
     /**
      * @brief A file that can be read asynchronously by coroutines.
      * 
      */
-    class CoFile: private private_::WaitInterface
+    class CoFile
     {
     private:
         int file_fd = -1;
@@ -35,7 +21,7 @@ namespace cotask {
         CoFile(const CoFile &){}; // no copy.
         CoFile( CoFile &&){}; // no move.
     public:
-        enum OpenMode
+        enum class OpenMode
         {
             Read,
             Create,
@@ -62,8 +48,15 @@ namespace cotask {
          * @brief Close the file.
          * 
          */
-        void Close();
+        CoTask<> CoClose();
 
+        /**
+         * @brief Closes the file, synchronously waiting for all i/o operations to complete.
+         * 
+         * CoClose pumps messages on the current CoDispatcher until all i/o operations have settled. Prefer CoClose() if you can.
+         * 
+         */
+        void Close();
         /**
          * @brief Open a file.
          * 
@@ -245,23 +238,48 @@ namespace cotask {
         }
 
     private:
-        std::mutex readMutex;
-        std::mutex writeMutex;
-        std::mutex callbackMutex;
 
         int lineHead = 0;
         int lineTail = 0;
         char lineBuffer[512];
         std::stringstream lineSS;
-        
-        virtual bool IsReady(private_::WaitOperation op);
-        virtual void SetReadyCallback(private_::WaitOperation op,private_::WaitInterface::callback callbackOnReady);
-        virtual void ClearReadyCallback(private_::WaitOperation op);
 
-        private_::WaitInterface::callback readCallback;
-        private_::WaitInterface::callback writeCallback;
+        bool deleted = false;
         bool readReady = false;
         bool writeReady = false;
+
+        CoConditionVariable readCv;
+        CoConditionVariable writeCv;
+
+
+        bool closed = true;
+        bool closing = false;
+        int pendingOperations = 0;
+        CoConditionVariable closeCv;
+        void CheckUseAfterDelete();
+
+        class OpsLock {
+        public:
+            OpsLock();
+
+            OpsLock(CoFile *pFile) : pFile(pFile) {
+                if (pFile->deleted) // catch *some* but not all use-after-free errors.
+                {
+                    Terminate("Use after free!");
+                }
+                pFile->closeCv.Execute([this] () {
+                    this->pFile->pendingOperations++;
+                });
+            }
+            ~OpsLock() {
+                pFile->closeCv.Notify([this] () {
+                    this->pFile->pendingOperations--;
+                });
+            }
+        private:
+            CoFile *pFile;
+        };
+
         void WatchFile(int fd);
 
     };

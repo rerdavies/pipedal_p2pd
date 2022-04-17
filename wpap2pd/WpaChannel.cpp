@@ -1,21 +1,16 @@
 #include "includes/WpaChannel.h"
 #include "ss.h"
 #include "cotask/Os.h"
-
-extern "C"
-{
-#include "wpa_ctrl.h"
-}
+#include <string.h>
+#include "includes/P2pUtil.h"
 
 using namespace p2p;
 using namespace std;
 using namespace cotask;
 
-static const char *WPA_CONTROL_SOCKET_DIR = "/var/run/wpa_supplicant";
-
-void WpaChannel::RequestOK(const std::string &message)
+CoTask<> WpaChannel::RequestOK(const std::string message)
 {
-    auto response = Request(message);
+    auto response = co_await Request(message);
     if (response.size() >= 1)
     {
         if (response[0] != "OK")
@@ -27,66 +22,31 @@ void WpaChannel::RequestOK(const std::string &message)
     {
         throw WpaIoException(EBADMSG, SS("Request failed. (No response). " << message));
     }
+    co_return;
 }
 
-std::vector<std::string> WpaChannel::Request(
-    const std::string &message)
+CoTask<std::vector<std::string>> WpaChannel::Request(
+    const std::string message)
 {
-    char reply[4096]; // the maximum length of a UNIX socket buffer.
+
+    CoLockGuard lock;
+    co_await lock.CoLock(requestMutex);
+
     if (message.size() == 0 || message[message.length() - 1] != '\n')
     {
         throw invalid_argument("Message must end with '\\n'");
     }
-    size_t len = sizeof(reply);
     if (traceMessages)
     {
         Log().Info(SS(logPrefix << "> " << message.substr(0, message.length() - 1)));
     }
-    int retries = 0;
-    while (true)
-    {
-        if (IsDisconnected())
-        {
-            throw WpaDisconnectedException();
-        }
-        errno = 0;
-        int retVal;
-        if (commandSocket == nullptr)
-        {
-            throw WpaIoException(EBADFD, "Socket not open.");
-        }
-        retVal = wpa_ctrl_request(commandSocket, message.c_str(), message.length() - 1, reply, &len, nullptr);
-        if (retVal != 0)
-        {
-            if (retVal == -1 && errno == EAGAIN)
-            {
-                if (++retries < 3)
-                {
-                    os::msleep(100);
-                    continue;
-                }
-                throw CoTimedOutException();
-            }
-
-            if (retVal == -2)
-            {
-                throw CoTimedOutException();
-            }
-            if (errno != 0)
-            {
-                CoIoException::ThrowErrno();
-            }
-            else
-            {
-                throw WpaIoException(EBADMSG, "Failed.");
-            }
-        }
-        break;
-    }
-    reply[len] = 0;
+    size_t len = co_await commandSocket.CoRequest(
+        message.c_str(), message.length() - 1,
+        requestReplyBuffer, sizeof(requestReplyBuffer));
+    requestReplyBuffer[len] = 0;
 
     vector<string> result;
-    const char *p = reply;
+    const char *p = requestReplyBuffer;
     while (*p != 0)
     {
         const char *start = p;
@@ -114,7 +74,7 @@ std::vector<std::string> WpaChannel::Request(
         //     throw WpaIoException(EBADMSG, SS("Command failed."));
         // }
     }
-    return result;
+    co_return result;
 }
 void WpaChannel::SetDisconnected()
 {
@@ -138,6 +98,9 @@ void WpaChannel::CloseChannel()
         try
         {
             SetDisconnected();
+            eventSocket.Close();
+            eventMessageQueue.Close();
+
             if (cvRecvRunning.Test<bool>([this]() { return this->recvThreadCount != 0; }))
             {
                 CoTask<> task = JoinRecvThread();
@@ -149,43 +112,38 @@ void WpaChannel::CloseChannel()
                 }
                 catch (const std::exception &e)
                 {
-                    // task should NEVER throw.
-                    Log().Error(SS(interfaceName << " Unexpected exception while terminating recv thread. " << e.what()));
-                    std::terminate();
+                    // should *never* throw.
+                    Terminate(" Unexpected exception while terminating recv thread. ");
                 }
             }
-            // once more to make sure all the Disconnect exceptions have settled.
+            commandSocket.Close();
+            // once more to make sure all the Disconnect and close exceptions have settled.
             Dispatcher().PumpMessages();
-
-            CloseChannel(this->commandSocket);
-            this->commandSocket = nullptr;
         }
         catch (const std::exception &e)
         {
-            //~ is noexcept!
+
+            std::string message = SS("Exception while closing channel. Terminating.");
+            Log().Error(message);
+
+            //~ is noexcept! Any any error here will result in cleanup problems.
+            Terminate(message);
         }
     }
     else
     {
-        if (this->commandSocket)
-        {
-            CloseChannel(this->commandSocket);
-            this->commandSocket = nullptr;
-        }
+        commandSocket.Close();
+
+        Dispatcher().PumpMessages();
     }
 }
 
-void WpaChannel::OpenChannel(const std::string &interfaceName, bool withEvents)
+CoTask<> WpaChannel::OpenChannel(const std::string &interfaceName, bool withEvents)
 {
     this->withEvents = withEvents;
     if (withEvents)
     {
         this->interfaceName = interfaceName;
-        std::filesystem::path socketDir{WPA_CONTROL_SOCKET_DIR};
-
-        std::filesystem::path p2pPath = socketDir / interfaceName;
-
-        wpa_ctrl *pEventSocket;
 
         // seems to be a race condition between receiving group added event and avaialability of the socket.
 
@@ -193,47 +151,25 @@ void WpaChannel::OpenChannel(const std::string &interfaceName, bool withEvents)
         {
             try
             {
-                pEventSocket = OpenWpaSocket(interfaceName);
+                eventSocket.Open(interfaceName);
+                break;
             }
             catch (const WpaIoException &e)
             {
-                if (retry == 3)
+                if (retry == 5)
                 {
                     throw WpaIoException(e.errNo(), SS("Can't open event socket. " << e.what()));
                 }
-                os::msleep(100);
-                continue;
             }
-            int result = wpa_ctrl_attach(pEventSocket);
-            if (result != 0)
-            {
-                if (result == -2)
-                {
-                    wpa_ctrl_close(pEventSocket);
-                    if (retry == 3)
-                    {
-                        auto message = SS("Timed out attaching to " << interfaceName);
-                        throw WpaIoException(ETIMEDOUT, message);
-                    }
-                    auto message = SS("Timed out attaching to " << interfaceName << ". Retrying...");
-
-                    Log().Warning(message);
-                    continue;
-                }
-                else
-                {
-                    wpa_ctrl_close(pEventSocket);
-                    throw CoIoException(errno, SS("Failed to attach to " << interfaceName));
-                }
-            }
-            break;
+            co_await CoDelay(100ms); // wait and try again.
         }
+        co_await eventSocket.Attach();
 
         closed = false;
 
         try
         {
-            this->commandSocket = OpenWpaSocket(interfaceName);
+            this->commandSocket.Open(interfaceName);
         }
         catch (const WpaIoException &e)
         {
@@ -243,7 +179,7 @@ void WpaChannel::OpenChannel(const std::string &interfaceName, bool withEvents)
         cvRecvRunning.Execute([this]() {
             this->recvThreadCount = 2;
         });
-        Dispatcher().StartThread(ReadEventsProc(pEventSocket, interfaceName));
+        Dispatcher().StartThread(ReadEventsProc(interfaceName));
 
         Dispatcher().StartThread(ForegroundEventHandler());
     }
@@ -257,7 +193,7 @@ void WpaChannel::OpenChannel(const std::string &interfaceName, bool withEvents)
             {
                 try
                 {
-                    this->commandSocket = OpenWpaSocket(interfaceName);
+                    this->commandSocket.Open(interfaceName);
                 }
                 catch (const WpaIoException &e)
                 {
@@ -270,66 +206,28 @@ void WpaChannel::OpenChannel(const std::string &interfaceName, bool withEvents)
                 }
                 break;
             }
-        } catch (const WpaIoException &e)
+        }
+        catch (const WpaIoException &e)
         {
-            throw WpaIoException(e.errNo(),SS("Can't open command socket. " << e.what()));
+            throw WpaIoException(e.errNo(), SS("Can't open command socket. " << e.what()));
         }
     }
+    OnChannelOpened();
 }
 
-CoTask<> WpaChannel::ReadEventsProc(wpa_ctrl *ctrl, std::string interfaceName)
+CoTask<> WpaChannel::ReadEventsProc(std::string interfaceName)
 {
     co_await CoBackground();
-
-    int ctrl_fd = -1;
 
     try
     {
         char buffer[4096];
 
-        auto &asyncIo = AsyncIo::GetInstance();
-
-        ctrl_fd = wpa_ctrl_get_fd(ctrl);
-
-        asyncIo.WatchFile(ctrl_fd,
-                          [this](AsyncIo::EventData eventData) {
-                              cvRecv.Notify([this, &eventData]() {
-                                  recvReady = eventData.readReady;
-                              });
-                          });
-
         while (true)
         {
-            size_t len = sizeof(buffer) - 1;
-            int retval = wpa_ctrl_recv(ctrl, buffer, &len);
-            if (retval < 0)
-            {
-                if (retval == -2)
-                {
 
-                    continue;
-                }
-                if (errno == EAGAIN)
-                {
-                    co_await cvRecv.Wait([this]() {
-                        if (this->recvAbort)
-                        {
-                            throw CoQueueClosedException();
-                        }
-                        if (this->recvReady)
-                        {
-                            this->recvReady = false;
-                            return true;
-                        }
-                        return false;
-                    });
-                    continue;
-                }
-                else
-                {
-                    throw CoIoException(errno, SS("Failed to receive from " << interfaceName));
-                }
-            }
+            size_t len = co_await eventSocket.CoRecv(buffer, sizeof(buffer));
+
             buffer[len] = 0;
 
             if (traceMessages)
@@ -371,43 +269,16 @@ CoTask<> WpaChannel::ReadEventsProc(wpa_ctrl *ctrl, std::string interfaceName)
             Log().Error(SS(interfaceName << ":p: " << e.what()));
         }
     }
-    if (ctrl_fd != -1)
-    {
-        AsyncIo::GetInstance().UnwatchFile(ctrl_fd);
-    }
-    if (ctrl != nullptr)
-    {
-        wpa_ctrl_close(ctrl);
-    }
+
+    // make sure both are closed, no matter which one we exited on.
     eventMessageQueue.Close();
+    eventSocket.Close();
+
     cvRecvRunning.Notify([this]() {
         --this->recvThreadCount;
     });
     co_return;
 }
-void WpaChannel::CloseChannel(wpa_ctrl *ctrl)
-{
-    if (ctrl != nullptr)
-    {
-        wpa_ctrl_close(ctrl);
-    }
-}
-
-wpa_ctrl *WpaChannel::OpenWpaSocket(const std::string &interfaceName)
-{
-    std::filesystem::path socketDir{WPA_CONTROL_SOCKET_DIR};
-
-    std::filesystem::path p2pPath = socketDir / interfaceName;
-
-    wpa_ctrl *ctrl{wpa_ctrl_open(p2pPath.c_str())};
-
-    if (!ctrl)
-    {
-        throw WpaIoException(errno, SS("Can't connect to " << interfaceName));
-    }
-    return ctrl;
-}
-
 bool WpaChannel::IsDisconnected()
 {
     return cvDelay.Test<bool>([this]() -> bool {
@@ -442,11 +313,11 @@ CoTask<> WpaChannel::ForegroundEventHandler()
         while (true)
         {
             WpaEvent *event = co_await eventMessageQueue.Take();
-            OnEvent(*event);
+            co_await OnEvent(*event);
             delete event;
         }
     }
-    catch (const CoQueueClosedException &)
+    catch (const CoIoClosedException &)
     {
     }
     catch (const std::exception &e)
@@ -460,13 +331,14 @@ CoTask<> WpaChannel::ForegroundEventHandler()
     co_return;
 }
 
-void WpaChannel::Ping()
+CoTask<> WpaChannel::Ping()
 {
-    auto response = Request("PING\n");
+    auto response = co_await Request("PING\n");
     if (response.size() != 1 || response[0] != "PONG")
     {
         throw WpaIoException(EBADMSG, "Invalid PING response.");
     }
+    co_return;
 }
 
 CoTask<> WpaChannel::JoinRecvThread()
@@ -485,17 +357,199 @@ WpaChannel::WpaChannel()
     SetLog(std::make_shared<ConsoleLog>());
 }
 
-std::string WpaChannel::RequestString(const std::string &request, bool throwIfFailed)
+CoTask<std::string> WpaChannel::RequestString(const std::string request, bool throwIfFailed)
 {
-    auto result = Request(request);
+    auto result = co_await Request(request);
     if (result.size() == 1)
     {
         if (throwIfFailed && (result[0] == "FAIL" || result[0] == "INVALID RESPONSE"))
         {
             throw WpaFailedException(result[0], request);
         }
-        return result[0];
+        co_return result[0];
     }
 
     throw WpaFailedException("Wrong size", request);
+}
+
+CoTask<std::vector<StationInfo>> WpaChannel::ListSta()
+{
+    CoLockGuard lock;
+    co_await lock.CoLock(requestMutex);
+
+    if (traceMessages)
+    {
+        Log().Info(SS(logPrefix << "> ListSta"));
+    }
+
+    std::vector<StationInfo> result;
+    std::string cmd = "STA-FIRST";
+    size_t len = co_await commandSocket.CoRequest(
+        cmd.c_str(), cmd.length(),
+        this->requestReplyBuffer, sizeof(this->requestReplyBuffer) - 1);
+    requestReplyBuffer[len] = '\0';
+
+    while (true)
+    {
+        if (len == 0)
+            break;
+
+        if (strcmp(requestReplyBuffer, "FAIL\n") == 0)
+        {
+            Log().Debug(SS(logPrefix << " ListSta() failed."));
+            co_return result;
+        }
+        if (strcmp(requestReplyBuffer, "UNKNOWN COMMAND\n") == 0)
+        {
+            Log().Error(SS(logPrefix << " ListSta(): UNKNOWN COMMAND"));
+            throw logic_error("ListSta(): UNKNOWN COMMAND");
+        }
+
+        StationInfo stationInfo{requestReplyBuffer};
+        std::string nextRequest = SS("STA-NEXT " << stationInfo.address);
+
+        result.push_back(std::move(stationInfo));
+
+        len = co_await commandSocket.CoRequest(
+            nextRequest.c_str(), nextRequest.length(),
+            this->requestReplyBuffer, sizeof(this->requestReplyBuffer) - 1);
+        requestReplyBuffer[len] = '\0';
+    }
+    if (traceMessages)
+    {
+        if (result.size() == 0)
+        {
+            Log().Info(SS(logPrefix << "< "));
+        }
+        else
+        {
+            for (const StationInfo &stationInfo : result)
+            {
+                Log().Info(SS(logPrefix << "< " << stationInfo.ToString()));
+            }
+        }
+    }
+    co_return result;
+}
+
+StationInfo::StationInfo(const char *buffer)
+{
+    Parse(buffer);
+    InitVariables();
+}
+
+std::string StationInfo::GetNamedParameter(const std::string &key) const
+{
+    for (const auto &i : namedParameters)
+    {
+        if (i.first == key)
+        {
+            return i.second;
+        }
+    }
+    return "";
+}
+
+size_t StationInfo::GetSizeT(const std::string &key) const
+{
+    auto val = GetNamedParameter(key);
+    try
+    {
+        return ToInt<size_t>(val);
+    }
+    catch (const std::exception & /*ignored*/)
+    {
+        return 0;
+    }
+}
+void StationInfo::InitVariables()
+{
+    // a2:15:e5:0d:91:b2
+    // flags=[AUTH][ASSOC][AUTHORIZED]
+    // aid=0
+    // capability=0x0
+    // listen_interval=0
+    // supported_rates=0c 18 30
+    // timeout_next=NULLFUNC POLL
+    // dot11RSNAStatsSTAAddress=a2:15:e5:0d:91:b2
+    // dot11RSNAStatsVersion=1
+    // dot11RSNAStatsSelectedPairwiseCipher=00-0f-ac-4
+    // dot11RSNAStatsTKIPLocalMICFailures=0
+    // dot11RSNAStatsTKIPRemoteMICFailures=0
+    // wpa=2
+    // AKMSuiteSelector=00-0f-ac-2
+    // hostapdWPAPTKState=11
+    // hostapdWPAPTKGroupState=0
+    // p2p_dev_capab=0x27
+    // p2p_group_capab=0x0
+    // p2p_primary_device_type=10-0050F204-5
+    // p2p_device_name=Android_rr
+    // p2p_device_addr=ca:74:fa:63:67:58
+    // p2p_config_methods=0x188
+    // rx_packets=1014
+    // tx_packets=2054
+    // rx_bytes=42198
+    // tx_bytes=313497
+    // inactive_msec=9000
+    // signal=0
+    // rx_rate_info=60
+    // tx_rate_info=60
+    // connected_time=7282
+    // upp_op_classes=51515354737475767778797a7b7c7d7e7f8082
+
+    // just the variables of particular interest.
+    address = GetParameter(0);
+    p2p_device_name = GetNamedParameter("p2p_device_name");
+
+    rx_bytes = GetSizeT("rx_bytes");
+    tx_bytes = GetSizeT("tx_bytes");
+    rx_packets = GetSizeT("rx_packets");
+    tx_packets = GetSizeT("tx_packets");
+}
+
+std::string StationInfo::GetParameter(size_t index) const
+{
+    if (index >= parameters.size())
+        return "";
+    return parameters[index];
+}
+
+void StationInfo::Parse(const char *buffer)
+{
+
+    const char *start;
+    start = buffer;
+    char c;
+
+    while (*buffer != 0)
+    {
+        start = buffer;
+        const char *equals = nullptr;
+
+        while ((c = *buffer) != '\0' && c != '\n')
+        {
+            if (c == '=')
+            {
+                equals = buffer;
+            }
+            ++buffer;
+        }
+        if (equals != nullptr)
+        {
+            namedParameters.push_back(
+                std::pair<std::string, std::string>(
+                    std::string(start, equals),
+                    std::string(equals + 1, buffer)));
+        }
+        else
+        {
+            parameters.push_back(std::string(start, buffer));
+        }
+        if (*buffer != 0)
+            ++buffer;
+    }
+}
+std::string StationInfo::ToString() const
+{
+    return SS(this->p2p_device_name << "(" << this->address << ")");
 }

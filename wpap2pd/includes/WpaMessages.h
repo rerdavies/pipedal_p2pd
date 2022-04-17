@@ -413,6 +413,8 @@ enum class WpaEventMessage {
 /* Event triggered for received management frame */
    AP_MGMT_FRAME_RECEIVED,         // "AP-MGMT-FRAME-RECEIVED "
 
+/* Any message starting with FAIL-. See WpaEvent::messageString for the full message. */
+   FAIL,  //"FAIL-*"
 
    MAX_MESSAGE
 };

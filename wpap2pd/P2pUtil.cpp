@@ -2,7 +2,6 @@
 #include <random>
 #include <sstream>
 
-
 using namespace p2p;
 
 using namespace std;
@@ -21,20 +20,26 @@ uint64_t p2p::toUint64(const std::string &value)
             int digit;
             if (c >= '0' && c <= '9')
             {
-                digit = c-'0';
-            } else if (c >= 'a' && c <= 'f')
+                digit = c - '0';
+            }
+            else if (c >= 'a' && c <= 'f')
             {
-                digit = c-'a'+10;
-            } else if (c >= 'A' && c <= 'F')
+                digit = c - 'a' + 10;
+            }
+            else if (c >= 'A' && c <= 'F')
             {
-                digit = c-'A'+10;
-            } else {
+                digit = c - 'A' + 10;
+            }
+            else
+            {
                 throw invalid_argument("Invalid number.");
             }
-            value = value*16 + digit;
+            value = value * 16 + digit;
         }
         return value;
-    }  else {
+    }
+    else
+    {
         // decimal
         uint64_t value = 0;
         if (!*p)
@@ -43,17 +48,14 @@ uint64_t p2p::toUint64(const std::string &value)
         }
         while (isdigit(*p))
         {
-            value = value*10 + (*p++)-'0';
-
+            value = value * 10 + (*p++) - '0';
         }
         if (*p != 0)
         {
             throw invalid_argument("Invalid number.");
         }
         return value;
-
     }
-    
 }
 
 int64_t p2p::toInt64(const std::string &value)
@@ -63,7 +65,8 @@ int64_t p2p::toInt64(const std::string &value)
     if (*p == '+')
     {
         ++p;
-    } else if (*p == '-')
+    }
+    else if (*p == '-')
     {
         sign = -1;
         ++p;
@@ -79,20 +82,26 @@ int64_t p2p::toInt64(const std::string &value)
             int digit;
             if (c >= '0' && c <= '9')
             {
-                digit = c-'0';
-            } else if (c >= 'a' && c <= 'f')
+                digit = c - '0';
+            }
+            else if (c >= 'a' && c <= 'f')
             {
-                digit = c-'a'+10;
-            } else if (c >= 'A' && c <= 'F')
+                digit = c - 'a' + 10;
+            }
+            else if (c >= 'A' && c <= 'F')
             {
-                digit = c-'A'+10;
-            } else {
+                digit = c - 'A' + 10;
+            }
+            else
+            {
                 throw invalid_argument("Invalid number.");
             }
-            value = value*16 + digit;
+            value = value * 16 + digit;
         }
-        return sign*value;
-    }  else {
+        return sign * value;
+    }
+    else
+    {
         // decimal
         int64_t value = 0;
         if (!*p)
@@ -101,15 +110,13 @@ int64_t p2p::toInt64(const std::string &value)
         }
         while (isdigit(*p))
         {
-            value = value*10 + (*p++)-'0';
-
+            value = value * 10 + (*p++) - '0';
         }
         if (*p != 0)
         {
             throw invalid_argument("Invalid number.");
         }
-        return sign*value;
-
+        return sign * value;
     }
 }
 
@@ -153,8 +160,7 @@ std::vector<std::string> p2p::splitWpaFlags(const std::string &value)
 
 static std::random_device randomDevice;
 
-static std::uniform_int_distribution distribution { 0, 26*2+10-1};
-
+static std::uniform_int_distribution distribution{0, 26 * 2 + 10 - 1};
 
 std::string p2p::randomText(size_t length)
 {
@@ -165,17 +171,130 @@ std::string p2p::randomText(size_t length)
         if (value < 26)
         {
             s << char('a' + value);
-        } else {
+        }
+        else
+        {
             value -= 26;
             if (value < 26)
             {
                 s << char('A' + value);
-            } else {
+            }
+            else
+            {
                 value -= 26;
                 s << char('0' + value);
             }
         }
+    }
+    return s.str();
+}
 
+std::string p2p::EncodeString(const std::string &s)
+{
+    bool requiresEncoding = false;
+
+    for (char c : s)
+    {
+        switch (c)
+        {
+        case '\0':
+            break;
+        case '\r':
+        case '\t':
+        case '\\':
+        case ' ':
+        case '\"':
+            requiresEncoding = true;
+            break;
+        default:
+            break;
+        }
+    }
+    if (!requiresEncoding)
+        return s;
+
+    stringstream ss;
+
+    ss << '"';
+    for (char c : s)
+    {
+        switch (c)
+        {
+        case '\0':
+            // discard.
+            break;
+        case '\r':
+            ss << "\\r";
+            break;
+        case '\t':
+            ss << "\\t";
+            break;
+        case '\\':
+            ss << "\\\\";
+            break;
+        case '\"':
+            ss << "\\\"";
+            break;
+        default:
+            ss << c;
+        }
+    }
+    ss << '"';
+    return ss.str();
+}
+
+std::string p2p::DecodeString(const std::string &value)
+{
+    std::stringstream s;
+    const char *p = value.c_str();
+    char quoteChar;
+    if (*p == '\'' || *p == '\"')
+    {
+        quoteChar = *p;
+    }
+    else
+    {
+        return value;
+    }
+    if (*p != quoteChar)
+        return value;
+    if (value.at(value.length()-1) != quoteChar)
+    {
+        throw std::invalid_argument("Invalid quoted string.");
+    }
+    ++p;
+    while (*p != 0 && *p != quoteChar)
+    {
+        char c = *p++;
+        if (c == '\\')
+        {
+            c = *p++;
+            switch (c)
+            {
+            case 'r':
+                s << '\r';
+                break;
+            case 't':
+                s << '\t';
+                break;
+            case 'n':
+                s << '\n';
+                break;
+            case '\0':
+                throw std::invalid_argument("Invalid quoted string.");
+                break;
+            default:
+                s << c;
+            }
+            if (c != 0)
+            {
+                s << c;
+            }
+        }
+        else
+        {
+            s << c;
+        }
     }
     return s.str();
 }

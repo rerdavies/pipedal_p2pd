@@ -87,7 +87,8 @@ bool WpaEvent::ParseLine(const char *line)
 
 
     WpaEventMessage wpaMessage = GetWpaEventMessage(message);
-    if (wpaMessage == WpaEventMessage::WPA_UNKOWN_MESSAGE)
+    if (wpaMessage == WpaEventMessage::WPA_UNKOWN_MESSAGE
+        || wpaMessage == WpaEventMessage::FAIL)
     {
         this->messageString = message;
     }
@@ -116,7 +117,30 @@ bool WpaEvent::ParseLine(const char *line)
 
         pStart = line;
 
-        if (skipBalancedPair(line, &line))
+        if (*line == '[')
+        {
+            // parse options [ | | |xxx]
+            ++line;
+            while (*line  != ']' && *line != '\0')
+            {                pStart = line;
+                while (*line != '|' && *line != ']' && *line != '\0')
+                {
+                    ++line;
+                }
+                const char *pEnd = line;
+                if (pEnd[-1] == ' ')
+                {
+                    --pEnd;
+                }
+                options.push_back(std::string(pStart,pEnd));
+                if (*line == '|') ++line;
+
+            }
+            if (*line == ']') ++ line;
+            while (*line == ' ') ++line;
+
+        }
+        else if (skipBalancedPair(line, &line))
         {
             this->parameters.push_back(std::string(pStart, line));
         }
@@ -225,7 +249,8 @@ std::string WpaEvent::ToString() const
 {
     std::stringstream s;
     s << '<' << (char)('0' + (int)priority) << '>';
-    if (this->message == WpaEventMessage::WPA_UNKOWN_MESSAGE)
+    if (this->message == WpaEventMessage::WPA_UNKOWN_MESSAGE
+    || this->message == WpaEventMessage::FAIL)
     {
         s << this->messageString;
     }
@@ -240,6 +265,22 @@ std::string WpaEvent::ToString() const
     for (auto i = this->namedParameters.begin(); i != this->namedParameters.end(); ++i)
     {
         s << " " << i->first << '=' << i->second;
+    }
+
+    if (options.size() != 0)
+    {
+        s << '[';
+        bool first = true;
+        for (const std::string &option: options)
+        {
+            if (!first)
+            {
+                s << " |";
+            }
+            first = false;
+            s << option;
+        }
+        s << ']';
     }
     return s.str();
 }

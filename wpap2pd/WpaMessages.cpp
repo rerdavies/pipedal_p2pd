@@ -13,8 +13,8 @@ static std::unordered_map<std::string, WpaEventMessage> stringToWpaEventMessage{
     /** Response to identity/password/pin request */
     {"CTRL-RSP-", WpaEventMessage::WPA_CTRL_RSP},
 
-    {"P2P:",  WpaEventMessage::WPA_P2P_INFO},
-    
+    {"P2P:", WpaEventMessage::WPA_P2P_INFO},
+
     /* Event messages with fixed prefix */
     /** Authentication completed successfully and data connection enabled */
     {"CTRL-EVENT-CONNECTED", WpaEventMessage::WPA_EVENT_CONNECTED},
@@ -409,8 +409,10 @@ static std::unordered_map<std::string, WpaEventMessage> stringToWpaEventMessage{
 
     /* Event triggered for received management frame */
     {"AP-MGMT-FRAME-RECEIVED", WpaEventMessage::AP_MGMT_FRAME_RECEIVED},
-}};
 
+    /* Any message starting with FAIL-. See  */
+    {"FAIL", WpaEventMessage::FAIL},
+}};
 
 static std::vector<std::string> ReverseMap()
 {
@@ -419,7 +421,6 @@ static std::vector<std::string> ReverseMap()
      for (auto i = stringToWpaEventMessage.begin(); i != stringToWpaEventMessage.end(); ++i)
      {
           result[(size_t)(i->second)] = i->first;
-
      }
      return result;
 }
@@ -428,14 +429,18 @@ static std::vector<std::string> messageToString = ReverseMap();
 
 const std::string &p2p::WpaEventMessageToString(WpaEventMessage message)
 {
-     return messageToString[ (int)message];
+     return messageToString[(int)message];
 }
 WpaEventMessage p2p::GetWpaEventMessage(const std::string &message)
 {
-    auto result = stringToWpaEventMessage.find(message);
-    if (result == stringToWpaEventMessage.end())
-    {
-        return WpaEventMessage::WPA_UNKOWN_MESSAGE;
-    }
-    return result->second;
+     auto result = stringToWpaEventMessage.find(message);
+     if (result == stringToWpaEventMessage.end())
+     {
+          if (message.starts_with("FAIL-"))
+          {
+               return WpaEventMessage::FAIL;
+          }
+          return WpaEventMessage::WPA_UNKOWN_MESSAGE;
+     }
+     return result->second;
 }

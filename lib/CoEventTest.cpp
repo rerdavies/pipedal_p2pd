@@ -28,7 +28,13 @@ public:
 
         co_await sourceConditionVariable.Wait();
 
-        if (!co_await sourceConditionVariable.Wait(250ms))
+        bool caught = false;
+        try {
+            co_await sourceConditionVariable.Wait(250ms);
+        } catch (const CoTimedOutException &) {
+            caught = true;
+        }
+        if (caught)
         {
             state = 3;
         }
@@ -220,7 +226,7 @@ public:
                 }
             }
         }
-        catch (const CoQueueClosedException &e)
+        catch (const CoIoClosedException &e)
         {
             cout << "        Got QueueClosed exception." << endl;
         }
@@ -266,10 +272,117 @@ void BlockingQueueTest()
     test.Run();
 }
 
+///////////  ConditionVariableTimeoutTest  ////
+
+class CConditionVariableTimeoutTest
+{
+public:
+    CoTask<> TimeoutTest(bool foreground)
+    {
+        if (foreground)
+            co_await CoForeground();
+        else
+            co_await CoBackground();
+
+        CoConditionVariable cv;
+
+        cout << "        timeout" << endl;
+        bool caught = false;
+        try {
+            co_await cv.Wait(
+                1000ms,
+                []() {
+                    return false;
+                });
+        } catch (const CoTimedOutException &e)
+        {
+            caught = true;
+        }
+        assert(caught == true);
+
+        assert(Dispatcher().IsForeground() == foreground);
+        Dispatcher().PostQuit();
+
+        co_return;
+    }
+
+    void Run()
+    {
+        cout << "ConditionVariableTimeoutTest" << endl;
+        cout << "    Foreground" << endl;
+        Dispatcher().MessageLoop(TimeoutTest(true));
+
+        cout << "    Background" << endl;
+        Dispatcher().MessageLoop(TimeoutTest(false));
+    }
+};
+
+void ConditionVariableTimeoutTest()
+{
+    CConditionVariableTimeoutTest test;
+    test.Run();
+}
+
+///////////  ConditionVariableDestructorTest  ////
+
+class CConditionVariableDestructorTest
+{
+
+public:
+    bool waitForClose = false;
+    CoTask<> WaitForClose(CoConditionVariable *pcv)
+    {
+        try {
+            co_await pcv->Wait();
+        } catch (CoIoClosedException &e)
+        {
+            waitForClose = true;
+        }
+        co_return;
+
+    }
+
+    CoTask<> Test(bool foreground) {
+        if (foreground)
+        {
+            co_await CoForeground();
+        } else {
+            co_await CoBackground();
+        }
+
+        CoConditionVariable *pcv = new CoConditionVariable();
+        Dispatcher().StartThread(WaitForClose(pcv));
+
+        delete pcv;
+        Dispatcher().PumpMessages();
+
+        assert(waitForClose);
+        Dispatcher().PostQuit();
+
+    }
+    void Run()
+    {
+        cout << "--- ConditionVariableDestructorTest --- " << endl;
+        cout << "    Foreground" << endl;
+        Dispatcher().MessageLoop(Test(true));
+        cout << "    Background" << endl;
+        Dispatcher().MessageLoop(Test(false));
+    }
+};
+
+void ConditionVariableDestructorTest()
+{
+    CConditionVariableDestructorTest test;
+    test.Run();
+}
+
 ///////////////////////////////////////////////
 
 int main(int argc, char **argv)
 {
+    ConditionVariableDestructorTest();
+
+    ConditionVariableTimeoutTest();
     BlockingQueueTest();
 
     MutexTest();

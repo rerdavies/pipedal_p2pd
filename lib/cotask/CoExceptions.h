@@ -107,5 +107,20 @@ namespace cotask {
         CoEndOfFileException() : CoIoException(ENODATA,"End of file.") {}
     };
 
+    /**
+     * @brief Attempt to read from or write to a closed file.
+     * 
+     */
+    class CoIoClosedException : public CoIoException
+    {
+    public:
+        using base = CoIoException;
+
+        CoIoClosedException()
+        :base(ENOTCONN, "Closed.")
+        {
+        }
+    };
+
 
 } // namespace.

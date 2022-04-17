@@ -11,7 +11,7 @@ int main(int argc, char**argv)
 {
     Dispatcher(); // create a CoDispatcher and thread pool
 
-    Dispatcher().Log().SetLogLevel(Debug);
+    Dispatcher().Log().SetLogLevel(LogLevel::Debug);
 
     Dispatcher().DestroyDispatcher();
     return 0;

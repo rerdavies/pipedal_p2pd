@@ -89,12 +89,12 @@ ProcessId cotask::os::Spawn(
     // {
     //     pArgs[i+1] = arguments[i].c_str();
     // }
+    std::string fname = path.filename();
+    pArgs[0] = fname.c_str();
     for (size_t i = 0; i < arguments.size(); ++i)
     {
-        pArgs[i] = arguments[i].c_str();
+        pArgs[i+1] = arguments[i].c_str();
     }
-    pArgs[arguments.size()] = nullptr;
-    pArgs[arguments.size() + 1] = nullptr;
     pArgs[arguments.size() + 1] = nullptr;
 
     const char **pEnv = new const char *[environment.size() + 1];
@@ -209,7 +209,7 @@ bool cotask::os::WaitForProcess(ProcessId processId, int timeoutMs)
         int ret = waitpid(pid, &status, 0);
         if (ret == -1)
         {
-            throw std::invalid_argument("No such process.");
+            return true;
         };
     }
     else
@@ -221,7 +221,7 @@ bool cotask::os::WaitForProcess(ProcessId processId, int timeoutMs)
             int ret = waitpid(pid, &status, WNOHANG);
             if (ret == -1)
             {
-                throw std::invalid_argument("No such process.");
+                return true;
             };
             if (ret == pid)
             {

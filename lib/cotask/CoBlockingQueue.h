@@ -49,7 +49,7 @@ namespace cotask {
          * @param timeout How long to wait for a value to become available.
          * @return Task<T*> A pointer to an object.
          * @throws CoTimeoutException on timeout
-         * @throws CoQueueClosedException if Close() has been called.
+         * @throws CoIoClosedException if Close() has been called.
          * 
          * A CoTimeoutException is thrown if the timeout expires. 
          * 
@@ -66,9 +66,9 @@ namespace cotask {
         /**
          * @brief Close the queue.
          * 
-         * Subsequent attempts to Push() into the queue will throw a CoQueueClosedException.
+         * Subsequent attempts to Push() into the queue will throw a CoIoClosedException.
          * Readers may Take() any values that are in the queue already, and will receive 
-         * a CoQueueClosedException once the queue has emptied. 
+         * a CoIoClosedException once the queue has emptied. 
          */
         void Close();
 
@@ -110,7 +110,7 @@ namespace cotask {
                 std::lock_guard lock {queueMutex};
                 if (this->closed)
                 {
-                    throw CoQueueClosedException();
+                    throw CoIoClosedException();
                 }
                 if (queue.size() == this->maxLength)
                 {
@@ -137,7 +137,7 @@ namespace cotask {
                 {
                     if (closed)
                     {
-                        throw CoQueueClosedException();
+                        throw CoIoClosedException();
                     }
                     return false; // suspend.
                 }

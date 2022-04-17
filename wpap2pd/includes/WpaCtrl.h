@@ -75,19 +75,20 @@ namespace p2p {
              */
             CoTask<size_t> CoRecv(void *buffer, size_t size, std::chrono::milliseconds timeout = NO_TIMEOUT);
 
+            CoTask<> Attach();
+            CoTask<> Detach();
 
-
-            CoTask<int> CtrlRequest(
+            CoTask<size_t> CoRequest(
                 const char *cmd, size_t cmd_len,
-		        char *reply, size_t *reply_len);
+		        char *reply, size_t buffer_length);
 
         private:
-            CoMutex requestMutex;
+            CoTask<> AttachHelper(const std::string &message);
 
             void Open2(const std::string &fullPath);
             class detail::wpa_ctrl *ctrl = nullptr; // os-dependent data
             CoFile coFile; // receiver for select notifications.
-
+            std::string socketName;
     };
 
 

@@ -24,26 +24,43 @@ namespace p2p {
     public:
         using base = WpaChannel;
 
-        void OpenChannel();
+        CoTask<> OpenChannel();
     protected:
-        void SetP2pProperty(const std::string &name, const std::string &value);
+        CoTask<> SetP2pProperty(const std::string &name, const std::string &value);
 
 
     public:
         P2pGroup();
+        P2pGroup(P2pSessionManager*pSessionManager,const std::string&interfaceName_)
+        : pSessionManager(pSessionManager),interfaceName(interfaceName_) { }
+
         P2pGroup(P2pSessionManager*pSessionManager,const  P2pGroupInfo &groupInfo)
         : pSessionManager(pSessionManager),
-            groupInfo(groupInfo)
+            interfaceName(groupInfo.interface)
         {
               
         }
-        const P2pGroupInfo &GroupInfo() const { return groupInfo; }
+        // const P2pGroupInfo &GroupInfo() const { return groupInfo; }
+        const std::string &GetInterfaceName() const { return interfaceName; }
     private:
-        void PreAuth();
-        virtual void OnEvent(const WpaEvent &event);
+        /**
+         * @brief Ask P2pSessionManager to close the group.
+         * 
+         * P2pSession manager will start a shutdown if it receives this message.
+         * 
+         * @return CoTask<> 
+         */
+        std::string currentEnrollee;
+        CoTask<> TerminateGroup();
+        void DebugHook();
+        CoTask<> PingProc();
+        CoTask<> PreAuth(const std::string & clientid);
+        virtual CoTask<> OnEvent(const WpaEvent &event);
         void SetParameters();
         P2pSessionManager *pSessionManager = nullptr;
-        P2pGroupInfo groupInfo;
+        std::string interfaceName;
+        // P2pGroupInfo groupInfo;
+        CoTask<> OnEnrolleeSeen(const WpaEvent &event);
 
     };
 

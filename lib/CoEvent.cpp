@@ -1,11 +1,12 @@
 #include "cotask/CoEvent.h"
+#include <stdexcept>
 
 using namespace cotask;
 
 namespace cotask
 {
-    #ifndef DOXYGEN
-    namespace private_
+#ifndef DOXYGEN
+    namespace detail
     {
         // friend of CoConditionaVariable
         class CoConditionaVariableImplementation
@@ -14,18 +15,48 @@ namespace cotask
             static auto Wait_(
                 CoConditionVariable *this_,
                 std::function<bool(void)> condition,
-                std::chrono::milliseconds timeout = std::chrono::milliseconds(-1))
+                std::chrono::milliseconds timeout = NO_TIMEOUT)
             {
                 struct Implementation : CoConditionVariable::Awaiter
                 {
+                    ~Implementation()
+                    { // debug hook to verify that we get deleted on close.
+                        if (!closed && this_ != nullptr)
+                        {
+                            {
+                                std::lock_guard lock {this_->mutex};
+                                bool result = this_->RemoveAwaiter(this);
+                                if (result)
+                                {
+                                    Dispatcher().Log().Warning("Orphaned awaiter.");
+                                }
+                            }
+                        }
+                        this_ = nullptr;
+                    }
+
                     using return_type = void;
 
-                    CoConditionVariable *this_;
                     void Execute(CoServiceCallback<void> *pCallback)
                     {
-                        bool signaled = this->signaled;
+
                         {
-                            std::lock_guard lock{this_->mutex};
+                            if (!this_)
+                                return;
+                            if (this_->deleted)
+                            {
+                                Terminate("Use after free.");
+                            }
+
+                            std::unique_lock lock{this_->mutex};
+                            this->pCallback = pCallback;
+
+                            if (this_)
+                            {
+                                this_->AddAwaiter(this);
+                            }
+
+                            bool signaled = this->signaled;
                             if (!signaled)
                             {
                                 if (this_->ready)
@@ -33,86 +64,122 @@ namespace cotask
                                     signaled = true;
                                     this_->ready = false;
                                 }
-                            }
-                            if (this->conditionTest != nullptr)
-                            {
-                                try {
-                                    signaled = this->conditionTest();
-                                } catch (const std::exception &e)
+                                if (this->conditionTest != nullptr)
                                 {
-                                    pCallback->SetException(std::current_exception());
-                                    return;
+                                    try
+                                    {
+                                        signaled = this->conditionTest();
+                                    }
+                                    catch (const std::exception &e)
+                                    {
+                                        if (this_)
+                                        {
+                                            this_->RemoveAwaiter(this);
+                                            this_ = nullptr;
+                                        }
+                                        auto t = pCallback;
+                                        pCallback = nullptr;
+                                        lock.unlock();
+                                        t->SetException(std::current_exception());
+                                        return;
+                                    }
                                 }
                             }
+                            if (signaled)
+                            {
+                                if (this_)
+                                {
+                                    this_->RemoveAwaiter(this);
+                                    this_ = nullptr;
+                                }
+                                auto t = pCallback;
+                                pCallback = nullptr;
+                                lock.unlock();
+
+                                t->SetComplete();
+                                return;
+                            }
+                            if (this->timeout != NO_TIMEOUT)
+                            {
+                                pCallback->RequestTimeout(this->timeout);
+                            }
                         }
-                        if (signaled)
-                        {
-                            pCallback->SetComplete();
-                            return;
-                        }
-                        if (this->timeout != NO_TIMEOUT)
-                        {
-                            pCallback->RequestTimeout(this->timeout);
-                        }
-                        this->pCallback = pCallback;
-                        this_->AddAwaiter(this);
                     }
 
                     bool CancelExecute(CoServiceCallback<void> *pCallback)
                     {
-                        return this_->RemoveAwaiter(this);
+                        if (closed)
+                            return true;
+                        if (this_)
+                        {
+                            std::lock_guard guard {this_->mutex};
+                            bool result = this_->RemoveAwaiter(this);
+                            this_ = nullptr;
+                            return result;
+                        } else {
+                            return true;
+                        }
                     }
                 };
                 CoService<Implementation> awaiter;
                 awaiter.this_ = this_;
                 awaiter.conditionTest = condition;
                 awaiter.timeout = timeout;
+                
                 return awaiter;
             }
         };
-        #endif
+#endif
     }
 }
 
 void CoConditionVariable::AddAwaiter(Awaiter *awaiter)
 {
-    std::lock_guard lock{mutex};
     awaiters.push_back(awaiter);
 }
 bool CoConditionVariable::RemoveAwaiter(Awaiter *awaiter)
 {
-    std::lock_guard lock{mutex};
+    CheckUseAfterFree();
+
     for (auto i = awaiters.begin(); i != awaiters.end(); ++i)
     {
         if ((*i) == awaiter)
         {
             awaiters.erase(i);
+            awaiter->this_ = nullptr;
             return true;
         }
     }
     return false;
 }
 
-CoTask<bool> CoConditionVariable::Wait(
+CoTask<> CoConditionVariable::Wait(
     std::chrono::milliseconds timeout,
-    std::function<bool(void)> condition
-    )
+    std::function<bool(void)> condition)
 {
-    try
+    CheckUseAfterFree();
+    try {
+        co_await detail::CoConditionaVariableImplementation::Wait_(this, condition, timeout);
+    } catch (const std::exception &e)
     {
-        co_await private_::CoConditionaVariableImplementation::Wait_(this, condition, timeout);
-        co_return true;
+        throw;
     }
-    catch (const CoTimedOutException &e)
-    {
-        co_return false;
-    }
+    co_return;
 }
 
+void CoConditionVariable::CheckUseAfterFree()
+{
+    // incomplete guard against use after free. But it catches lots.
+    if (this->deleted)
+    {
+        Terminate("Use after free.");
+    }
+}
 void CoConditionVariable::NotifyAll(function<void(void)> notifyAction)
 {
+    CheckUseAfterFree();
     // manage the queue under the mutex.
-    std::vector<Awaiter*> readyAwaiters;
+    std::vector<Awaiter *> readyAwaiters;
     {
         std::unique_lock lock{mutex};
         if (notifyAction)
@@ -120,16 +187,17 @@ void CoConditionVariable::NotifyAll(function<void(void)> notifyAction)
             notifyAction();
         }
 
-    
         for (auto i = awaiters.begin(); i != awaiters.end(); /**/)
-        {   
+        {
             bool ready = true;
             auto awaiter = *i;
             if (awaiter->conditionTest)
             {
-                try {
+                try
+                {
                     ready = awaiter->conditionTest();
-                } catch (const std::exception &e)
+                }
+                catch (const std::exception &e)
                 {
                     awaiter->UnhandledException();
                     ready = true;
@@ -137,14 +205,22 @@ void CoConditionVariable::NotifyAll(function<void(void)> notifyAction)
             }
             if (ready)
             {
-                readyAwaiters.push_back(awaiter);
+                if (awaiter->pCallback != nullptr)
+                {
+                    readyAwaiters.push_back(awaiter);
+                } else {
+                    awaiter->signaled = true;
+                }
                 i = awaiters.erase(i);
-            } else {
+                awaiter->this_ = nullptr;
+            }
+            else
+            {
                 ++i;
             }
         }
     }
-    // do the callbacks without the mutx.
+    // do the callbacks without the mutex.
     for (auto i = readyAwaiters.begin(); i != readyAwaiters.end(); ++i)
     {
         Awaiter *pAwaiter = (*i);
@@ -154,7 +230,10 @@ void CoConditionVariable::NotifyAll(function<void(void)> notifyAction)
 
 void CoConditionVariable::Notify(std::function<void(void)> action)
 {
+    CheckUseAfterFree();
+
     std::unique_lock lock{mutex};
+
     if (action)
     {
         action();
@@ -165,24 +244,30 @@ void CoConditionVariable::Notify(std::function<void(void)> action)
         bool ready = true;
         if (awaiter->conditionTest)
         {
-            try {
+            try
+            {
                 ready = awaiter->conditionTest();
-            } catch (const std::exception &e)
+            }
+            catch (const std::exception &e)
             {
                 awaiters.erase(awaiters.begin());
+                awaiter->this_ = nullptr;
                 if (awaiter->pCallback != nullptr)
                 {
                     auto t = awaiter->pCallback;
-                    awaiter->pCallback = nullptr;
                     lock.unlock();
+                    awaiter->pCallback = nullptr;
                     t->SetException(std::current_exception());
                     return;
+                } else {
+                    awaiter->signaled = true;
                 }
             }
         }
         if (ready)
         {
             awaiters.erase(awaiters.begin());
+            awaiter->this_ = nullptr;
             if (awaiter->pCallback != nullptr)
             {
                 auto t = awaiter->pCallback;
@@ -221,4 +306,52 @@ void CoMutex::Unlock()
     cv.Notify([this] {
         locked = false;
     });
+}
+
+CoConditionVariable::~CoConditionVariable()
+{
+
+    // manage the queue under the mutex.
+    std::vector<CoServiceCallback<void>*> callbacks;
+    {
+        std::unique_lock lock{mutex};
+        this->deleted = 0xBaadF00d; // no more access to this object.
+
+        for (auto i = awaiters.begin(); i != awaiters.end(); i++)
+        {
+            auto awaiter = *i;
+            awaiter->this_ = nullptr;
+            awaiter->closed = true;
+            if (awaiter->pCallback != nullptr)
+            {
+                try {
+                    throw CoIoClosedException();
+                } catch (const std::exception &)
+                {
+                    awaiter->UnhandledException();
+                }
+                if (awaiter->pCallback != nullptr)
+                {
+                    callbacks.push_back(awaiter->pCallback);
+                    awaiter->pCallback = nullptr;
+                }
+            } else {
+                awaiter->signaled = true;
+            }
+        }
+        awaiters.resize(0); // callback is now irrevocably pending.
+    }
+    // do the callbacks without the mutex.
+    for (auto i = callbacks.begin(); i != callbacks.end(); ++i)
+    {
+        CoServiceCallback<void> *pCallback = (*i);
+        std::exception_ptr ptr;
+        try {
+            throw CoIoClosedException();
+        } catch (const std::exception &)
+        {
+            ptr = std::current_exception();
+        }
+        pCallback->SetException(ptr);
+    }
 }

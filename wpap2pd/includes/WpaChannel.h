@@ -7,20 +7,42 @@
 #include "cotask/CoTask.h"
 #include "cotask/CoFile.h"
 #include "cotask/CoBlockingQueue.h"
+#include "includes/WpaCtrl.h"
 
-struct wpa_ctrl;
 
 namespace p2p
 {
+
+    class StationInfo {
+    public:
+        StationInfo(const char*buffer);
+
+        std::string address;
+        std::string p2p_device_name;
+        size_t rx_bytes = 0;
+        size_t tx_bytes = 0;
+        size_t rx_packets = 0;
+        size_t tx_packets = 0;
+
+        std::vector<std::string> parameters;
+        std::vector<std::pair<std::string,std::string>> namedParameters;
+
+        std::string GetParameter(size_t index) const;
+        std::string GetNamedParameter(const std::string&key) const;
+        std::string ToString() const;
+    private:
+        size_t GetSizeT(const std::string &key) const;
+        void Parse(const char*buffer);
+        void InitVariables();
+    };
+
 
     class WpaChannel {
     public:
         WpaChannel();
         virtual ~WpaChannel();
-        WpaChannel(wpa_ctrl*ctrl);
 
-
-        virtual void OpenChannel(const std::string &interfaceName, bool withEvents = true);
+        virtual CoTask<> OpenChannel(const std::string &interfaceName, bool withEvents = true);
         void CloseChannel();
 
         virtual void SetLog(std::shared_ptr<ILog> log) { this->pLog = log; rawLog = log.get(); /* (ILog is thread-safe) */ }
@@ -55,7 +77,7 @@ namespace p2p
          * @throws CoTimedOutException if the ping times out.
          * @throws WpaIoException if the channel is dead.
          */
-        void Ping();
+        CoTask<> Ping();
 
 
         /**
@@ -66,7 +88,7 @@ namespace p2p
          * @throws WpaDisconnectedException if the wap_suplicant connection drops.
          * @throws WpaIoException if an i/o error occurs on the wpa_supplicant channel.
          */
-        std::vector<std::string> Request(const std::string &request);
+        CoTask<std::vector<std::string>> Request(const std::string request);
 
         /**
          * @brief Send a request to wpa_supplicant, checking for an OK response.
@@ -80,7 +102,7 @@ namespace p2p
          * @throws WpaIoException if an i/oerror occurs on the wpa_supplicant channel.
          * @throws WpaFailedException if the channel does not return an OK response.
          */
-        void  RequestOK(const std::string &request);
+        CoTask<>  RequestOK(const std::string request);
 
         /**
          * @brief Send a request to wpa_supplication returning a single string respose.
@@ -96,19 +118,32 @@ namespace p2p
          * @return std::string 
          */
 
-        std::string RequestString(const std::string&request, bool throwIfFailed = false);
+        CoTask<std::string> RequestString(const std::string request, bool throwIfFailed = false);
+
+        /**
+         * @brief Get a list of Connected stations.
+         * 
+         * The equivalent of wpa_cli's list_sta command, which 
+         * requires multiple requests against a wpa_supplicant socket.
+         */
+        CoTask<std::vector<StationInfo>> ListSta();
+
 
         bool TraceMessages() const { return traceMessages; }
         void TraceMessages(bool value, const std::string&logPrefix) { traceMessages = value; this->logPrefix = logPrefix; }
         void TraceMessages(bool value) {TraceMessages(value,""); }
     protected:
-        void OpenChannel(wpa_ctrl*ctrl);
-        void CloseChannel(wpa_ctrl*ctrl);
+        virtual void OnChannelOpened() { }
 
-        virtual void OnEvent(const WpaEvent&event) { }
+        virtual CoTask<> OnEvent(const WpaEvent&event) { co_return;}
         std::shared_ptr<ILog> GetSharedLog() { return pLog; }
+
     private:
-        wpa_ctrl*ctrl = nullptr;
+        WpaCtrl commandSocket;
+        WpaCtrl eventSocket;
+        CoMutex requestMutex;
+
+
         bool closed = true;
         bool withEvents = false;
         std::string interfaceName;
@@ -122,16 +157,8 @@ namespace p2p
         bool disconnected = false;
         CoConditionVariable cvDelay;
 
-        CoFile socketFile;
-        wpa_ctrl*commandSocket = nullptr;
-
         CoBlockingQueue<WpaEvent> eventMessageQueue { 512};
 
-        bool lineBufferRecoveringFromTimeout = false;
-        int lineBufferHead = 0;
-        int lineBufferTail = 0;
-        char lineBuffer[512];
-        bool lineResultEmpty = true;
         std::stringstream lineResult;
 
         bool recvAbort = false;
@@ -151,14 +178,14 @@ namespace p2p
         }
         CoTask<> JoinRecvThread();
 
-        CoTask<std::vector<std::string>> ReadToPrompt(std::chrono::milliseconds timeout);
-        CoTask<> ReadEventsProc(wpa_ctrl*ctrl,std::string interfaceName);
+        CoTask<> ReadEventsProc(std::string interfaceName);
         CoTask<> ForegroundEventHandler();
 
-        wpa_ctrl *OpenWpaSocket(const std::string &interfaceName);
+
 
         void SetDisconnected();
 
+        char requestReplyBuffer[4096]; // the maximum length of a UNIX socket buffer.
 
     };
 

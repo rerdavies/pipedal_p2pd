@@ -33,7 +33,7 @@ CoTask<> CoSlowWriter(std::unique_ptr<CoFile> writer, bool trace)
         co_await writer->CoWrite(msg.c_str(), msg.length());
         co_await CoDelay(500ms);
     }
-    writer->Close();
+    co_await writer->CoClose();
     co_return;
 }
 
@@ -58,7 +58,7 @@ CoTask<> CoFastWriter(std::unique_ptr<CoFile> writer, size_t lengthBytes,bool tr
         co_await writer->CoWrite(buffer, thisTime);
         lengthBytes -= thisTime;
     }
-    writer->Close();
+    co_await writer->CoClose();
     co_return;
 }
 
@@ -96,10 +96,11 @@ CoTask<> CoSlowReader(std::unique_ptr<CoFile> reader, size_t expectedBytes,bool 
             offset += lastRead;
             if (lastRead == 0) break;
         }
-        if (lastRead == 0) break;
+        if (lastRead == 0) 
+            break;
         ++nBuffer;
     }
-    reader->Close();
+    co_await reader->CoClose();
     cout << endl;
     cout << "        Total read: " << totalRead << endl;
     if (totalRead != expectedBytes)
@@ -124,7 +125,7 @@ CoTask<> CoFastReader(std::unique_ptr<CoFile> reader,bool trace)
             cout.flush();
         }
     }
-    reader->Close();
+    co_await reader->CoClose();
     co_return;
 }
 

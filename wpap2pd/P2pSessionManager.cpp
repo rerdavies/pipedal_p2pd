@@ -4,6 +4,7 @@
 #include "cotask/Log.h"
 #include "ss.h"
 #include <cassert>
+#include "cotask/CoExec.h"
 
 using namespace p2p;
 using namespace std;
@@ -19,10 +20,10 @@ public:
         base::SetLogLevel(log->GetLogLevel());
     }
 
-    virtual void SetLogLevel(LogLevel logLevel) {
-         pLog->SetLogLevel(logLevel); 
-         base::SetLogLevel(logLevel);
-
+    virtual void SetLogLevel(LogLevel logLevel)
+    {
+        pLog->SetLogLevel(logLevel);
+        base::SetLogLevel(logLevel);
     }
 
     virtual LogLevel GetLogLevel() const { return pLog->GetLogLevel(); }
@@ -36,6 +37,7 @@ protected:
 private:
     std::string RemovePin(const std::string &message)
     {
+        return message; // XXX DELETE ME!!!
         auto nPos = message.find(gP2pConfiguration.p2p_pin);
         if (nPos == std::string::npos)
             return message;
@@ -52,49 +54,130 @@ void P2pSessionManager::SetLog(std::shared_ptr<ILog> log)
     base::SetLog(wrapper);
 }
 
-void P2pSessionManager::OnEvent(const WpaEvent &event)
+CoTask<> P2pSessionManager::EndEnrollment()
 {
-    base::OnEvent(event);
+
+    {
+        std::lock_guard lock { this->mxEnrollmentRecord};
+        this->enrollmentRecord.pin = "";
+        this->enrollmentRecord.deviceId = "";
+        this->enrollmentRecord.pbc = false;
+        this->enrollmentRecord.active = false;
+    }
+
+    if (connectedStations != 0)
+    {
+        co_await P2pStopFind(); // go into passive mode.
+    } else {
+        co_await P2pFind(15);
+    }
+    co_return;
+
+}
+
+
+CoTask<> P2pSessionManager::UpdateStationCount()
+{
+    if (this->activeGroups.size() > 0)
+    {
+        try {
+            auto stations =  co_await this->activeGroups[0]->ListSta();
+            connectedStations = stations.size();
+        } catch (const std::exception &e)
+        {
+            connectedStations = 0;
+        }
+    } else {
+        connectedStations = 0;
+    }
+
+}
+
+
+CoTask<> P2pSessionManager::OnEvent(const WpaEvent &event)
+{
+    //<3>WPS-ENROLLEE-SEEN 5a:29:ed:1d:f4:d7 129955ef-9dfe-538b-98ee-83315d72526a 0-00000000-0 0x3148 0 1 [ ]
+    //<3>WPS-ENROLLEE-SEEN 66:42:08:05:8b:4b 129955ef-9dfe-538b-98ee-83315d72526a 0-00000000-0 0x3148 0 0 [ ]
+    //<3>WPS-ENROLLEE-SEEN 16:1b:6f:96:1e:61 129955ef-9dfe-538b-98ee-83315d72526a 0-00000000-0 0x3148 0 1 [ ]
+    // <3>AP-STA-DISCONNECTED aa:a3:f2:67:3d:46 p2p_dev_addr=6e:00:18:2b:3b:ac
+    // <3>AP-STA-CONNECTED 26:ad:4e:b3:83:30 p2p_dev_addr=d2:fa:ed:2f:43:8d
+    // p2p-wlan0-1:p: <3>WPS-ENROLLEE-SEEN aa:a3:f2:67:3d:46 129955ef-9dfe-538b-98ee-83315d72526a 0-00000000-0 0x3148 0 0 [ ]:10:50:11 p2p_dev_addr=6e:00:18:2b:3b:ac
+    //<3>AP-STA-DISCONNECTED d6:a5:7a:10:50:11 p2p_dev_addr=6e:00:18:2b:3b:ac
+    co_await base::OnEvent(event);
     try
     {
         switch (event.message)
         {
+            // <3>CTRL-EVENT-TERMINATING
+        case WpaEventMessage::WPA_EVENT_TERMINATING:
+        {
+            Log().Info("wpa_supplicant terminating. (WPA_EVENT_TERMINATING)");
+            SetFinished();
+            break;
+        }
+        break;
+        case WpaEventMessage::WPS_EVENT_FAIL:
+        {
+            Log().Debug(SS("Enrollment failed." << event.ToString()));
+            co_await EndEnrollment();
+        } break;
+        case WpaEventMessage::AP_STA_CONNECTED:
+        {
+
+            // <3>AP-STA-CONNECTED 26:ad:4e:b3:83:30 p2p_dev_addr=d2:fa:ed:2f:43:8d
+            Log().Info(SS("Station connected: " << bsidToNameMap[event.GetNamedParameter("p2p_dev_addr")] << " " << event.getParameter(0)));
+
+            co_await UpdateStationCount();
+            co_await EndEnrollment();
+
+        }
+        break;
+        case WpaEventMessage::AP_STA_DISCONNECTED:
+        {
+            // <3>AP-STA-DISCONNECTED d6:a5:7a:10:50:11 p2p_dev_addr=6e:00:18:2b:3b:ac
+            Log().Info(SS("Station disconnected: " << event.getParameter(0)));
+
+            co_await UpdateStationCount();
+            co_await P2pStopFind();
+        }
+        break;
         case WpaEventMessage::P2P_EVENT_PROV_DISC_PBC_REQ:
-            OnProvDiscPbcReq(event);
-            break;
+        {
+            co_await OnProvDiscPbcReq(event);
+        }
+        break;
         case WpaEventMessage::P2P_EVENT_PROV_DISC_SHOW_PIN:
-            OnProvDiscShowPin(event);
-            break;
+        {
+            co_await OnProvDiscShowPin(event);
+        }
+        break;
         case WpaEventMessage::P2P_EVENT_GROUP_STARTED:
         {
-            auto newGroup = OnGroupStarted(event);
-            if (newGroup)
-            {
-                activeGroups.push_back(std::move(newGroup));
-                Log().Info("P2P group available.");
-
-                PreAuthorize(); // set up wpa_supplicant for the *next* connect attempt.
-             
-            }
-            ListNetworks();
+            co_await OnGroupStarted(event);
         }
         break;
 
         case WpaEventMessage::P2P_EVENT_GROUP_REMOVED:
-            OnGroupRemoved(event);
-            break;
+        {
+            co_await OnGroupRemoved(event);
+        }
+        break;
         case WpaEventMessage::P2P_EVENT_GO_NEG_REQUEST:
+        {
             Log().Debug("P2P_EVENT_GO_NEG_REQUEST");
-            OnP2pGoNegRequest(P2pGoNegRequest(event));
-            break;
+            co_await OnP2pGoNegRequest(P2pGoNegRequest(event));
+        }
+        break;
         case WpaEventMessage::P2P_EVENT_DEVICE_FOUND:
-
-            Log().Debug("OnDeviceFound");
-            OnDeviceFound(P2pDeviceInfo(event));
-            break;
+        {
+            co_await OnDeviceFound(P2pDeviceInfo(event));
+        }
+        break;
         case WpaEventMessage::P2P_EVENT_DEVICE_LOST:
-            OnDeviceLost(event.GetNamedParameter("p2p_dev_addr"));
-            break;
+        {
+            co_await OnDeviceLost(event.GetNamedParameter("p2p_dev_addr"));
+        }
+        break;
         case WpaEventMessage::WPA_EVENT_SCAN_RESULTS:
             // this->scanResults = this->ScanResults();
             break;
@@ -103,8 +186,8 @@ void P2pSessionManager::OnEvent(const WpaEvent &event)
         case WpaEventMessage::P2P_EVENT_FIND_STOPPED:
             break;
         case WpaEventMessage::WPS_EVENT_TIMEOUT:
-            Log().Debug("WPS_EVENT_TIMEOUT");
-            this->PreAuthorize();
+            // Log().Debug("WPS_EVENT_TIMEOUT");
+            // this->PreAuthorize();
             break;
         default:
             if (TraceMessages())
@@ -121,68 +204,50 @@ void P2pSessionManager::OnEvent(const WpaEvent &event)
     this->sychronousMessageToWaitFor = WpaEventMessage::WPA_INVALID_MESSAGE;
 }
 
-void P2pSessionManager::OnDeviceLost(std::string p2p_dev_addr)
-{
-    for (auto i = devices.begin(); i != devices.end(); ++i)
-    {
-        if (i->p2p_dev_addr == p2p_dev_addr)
-        {
-            devices.erase(i);
-            OnDevicesChanged();
-            return;
-        }
-    }
-}
-void P2pSessionManager::OnDeviceFound(P2pDeviceInfo &&device)
-{
-    for (auto i = devices.begin(); i != devices.end(); ++i)
-    {
-        if (i->p2p_dev_addr == device.p2p_dev_addr)
-        {
-            (*i) = std::move(device);
-            OnDevicesChanged();
-            return;
-        }
-    }
-    devices.push_back(std::move(device));
-    OnDevicesChanged();
-}
-
 CoTask<> P2pSessionManager::CoOnUnInit()
 {
     co_await base::CoOnUnInit();
 
-    StopServiceDiscovery();
+    co_await StopServiceDiscovery();
 
-    // Shut down all active groups.
+    // Take snapshot of all active groups.
+    std::vector<std::string> groups;
     for (auto &i : activeGroups)
     {
-        // 
-        Request(SS("P2P_GROUP_REMOVE " << i->GroupInfo().interface << '\n' ));
+        groups.push_back(i->GetInterfaceName());
     }
-    // wait for REMOVE_GROUP events to get processed.
-    while (activeGroups.size() != 0)
+    for (auto &group : groups)
     {
-        Dispatcher().PumpMessages(true);
+        co_await Request(SS("P2P_GROUP_REMOVE " << group << '\n'));
+        try
+        {
+            SynchronousWaitForMessage(WpaEventMessage::P2P_EVENT_GROUP_REMOVED, 10000ms);
+        }
+        catch (const CoTimedOutException &)
+        {
+            Log().Warning(SS("Timed out removing group " << group));
+        }
     }
-    // Make sure the event queue has drained.
-    Dispatcher().PumpMessages();
+    activeGroups.resize(0);
+
+    co_await this->dnsMasqProcess.Stop();
 
     co_return;
 }
 CoTask<> P2pSessionManager::CoOnInit()
 {
     co_await base::CoOnInit();
-    InitWpaConfig();
+    co_await InitWpaConfig();
 
     CoDispatcher::CurrentDispatcher().StartThread(KeepAliveProc());
     CoDispatcher::CurrentDispatcher().StartThread(ScanProc());
 
-    this->networkId = FindNetwork();
+    this->networkId = co_await FindNetwork();
 
-    SetUpPersistentGroup();
+    co_await SetUpPersistentGroup();
 
-    StartServiceDiscovery();
+    
+    co_await StartServiceDiscovery();
 
     co_return;
 }
@@ -212,7 +277,7 @@ P2pDeviceInfo::P2pDeviceInfo(const WpaEvent &event)
         group_capab = event.GetNumericParameter<decltype(group_capab)>("group_capab");
         wfd_dev_info = event.GetNumericParameter<decltype(wfd_dev_info)>("wfd_dev_info", 0);
         vendor_elems = event.GetNumericParameter<decltype(vendor_elems)>("vendor_elems", 0);
-        new_ = toInt<decltype(new_)>(event.GetNamedParameter("new"));
+        new_ = ToInt<decltype(new_)>(event.GetNamedParameter("new"));
     }
     catch (const std::exception &e)
     {
@@ -220,18 +285,9 @@ P2pDeviceInfo::P2pDeviceInfo(const WpaEvent &event)
     }
 }
 
-void P2pSessionManager::MaybeEnableNetwork(const std::vector<WpaNetworkInfo> &networks)
+CoTask<> P2pSessionManager::MaybeEnableNetwork(const std::vector<WpaNetworkInfo> &networks)
 {
-    if (networks.size() != 0)
-    {
-        if (networks[0].IsDisabled())
-        {
-            if (networks[0].IsP2pPersistent())
-            {
-                EnableNetwork(0);
-            }
-        }
-    }
+    co_return;
 }
 
 /*
@@ -261,8 +317,8 @@ P2pGoNegRequest::P2pGoNegRequest(const WpaEvent &event)
 
         this->src = event.parameters[0];
 
-        this->dev_passwd_id = toInt<decltype(dev_passwd_id)>(event.GetNamedParameter("dev_passwd_id"));
-        this->go_intent = toInt<decltype(go_intent)>(event.GetNamedParameter("go_intent"));
+        this->dev_passwd_id = ToInt<decltype(dev_passwd_id)>(event.GetNamedParameter("dev_passwd_id"));
+        this->go_intent = ToInt<decltype(go_intent)>(event.GetNamedParameter("go_intent"));
     }
     catch (const std::exception &e)
     {
@@ -270,121 +326,70 @@ P2pGoNegRequest::P2pGoNegRequest(const WpaEvent &event)
     }
 }
 
-void P2pSessionManager::OnP2pGoNegRequest(const P2pGoNegRequest &request)
+CoTask<> P2pSessionManager::OnP2pGoNegRequest(const P2pGoNegRequest &request)
 {
-    return;
-
-    std::string persistent;
-
-    auto config = gP2pConfiguration;
-
-    if (config.persistent_reconnect)
-    {
-        if (this->networkId != -1)
-        {
-            persistent = SS(" persistent=" << networkId << " join");
-        }
-        else
-        {
-            persistent = " persistent";
-        }
-    }
-    persistent = " persistent";
-    std::string configMethod = gP2pConfiguration.p2p_config_method;
-    if (configMethod == "none")
-    {
-        configMethod = "pbc";
-    }
-    if (configMethod == "keypad")
-    {
-        configMethod = SS(config.p2p_pin << " keypad");
-    }
-    std::string pin = gP2pConfiguration.p2p_pin;
-
-    std::string rq = SS(
-        "P2P_CONNECT "
-        << request.src
-        << " " << configMethod
-        << persistent
-        << " go_intent=" << config.p2p_go_intent
-        << (config.p2p_go_ht40 ? " ht40" : "")
-        << (config.p2p_go_vht ? " vht" : "")
-        << (config.p2p_go_he ? " he" : "")
-        << '\n');
-    RequestOK(rq);
+    co_return;
 }
 
-void P2pSessionManager::InitWpaConfig()
+CoTask<> P2pSessionManager::InitWpaConfig()
 {
-    SetWpaProperty("device_name", (gP2pConfiguration.p2p_device_name));
-    //SetWpaProperty("country", gP2pConfiguration.country_code);
-    SetWpaProperty("device_type", (gP2pConfiguration.p2p_device_type));
-    SetWpaProperty("persistent_reconnect", gP2pConfiguration.persistent_reconnect ? "1" : "0");
-    SetWpaProperty("p2p_go_ht40", gP2pConfiguration.p2p_go_ht40 ? "1" : "0");
+    co_await SetWpaProperty("device_name", (gP2pConfiguration.p2p_device_name));
+    //co_await SetWpaProperty("country", gP2pConfiguration.country_code);
+    bool t = this->wpaConfigChanged; // device_type always fails for unknown reasons. BUt it does get set.
+    co_await SetWpaProperty("device_type", (gP2pConfiguration.p2p_device_type));
+    this->wpaConfigChanged = t;
+    co_await SetWpaProperty("persistent_reconnect", gP2pConfiguration.persistent_reconnect ? "1" : "0");
+    co_await SetWpaProperty("p2p_go_ht40", gP2pConfiguration.p2p_go_ht40 ? "1" : "0");
 
-    SetWpaProperty("update_config", "1");
+    co_await SetWpaProperty("update_config", "1");
 
     //UdateWpaConfig();
     auto &config = gP2pConfiguration;
 
     if (config.p2p_config_method == "none")
     {
-        SetWpaProperty("config_methods", "pbc");
+        co_await SetWpaProperty("config_methods", "pbc");
+    }
+    else if (config.p2p_config_method == "label")
+    {
+        co_await SetWpaProperty("config_methods", "keypad");
     }
     else
     {
-        SetWpaProperty("config_methods", config.p2p_config_method);
+        co_await SetWpaProperty("config_methods", config.p2p_config_method);
     }
 
-    SetWpaProperty("model_name", config.model_name);
-    if (config.manufacturer != "")
-        SetWpaProperty("model_number", (config.model_number));
-    if (config.model_number != "")
-        SetWpaProperty("manufacturer", (config.manufacturer));
+    co_await SetWpaProperty("model_name", config.p2p_model_name);
+    if (config.p2p_manufacturer != "")
+        co_await SetWpaProperty("model_number", (config.p2p_model_number));
+    if (config.p2p_model_number != "")
+        co_await SetWpaProperty("manufacturer", (config.p2p_manufacturer));
     if (config.p2p_serial_number != "")
-        SetWpaProperty("serial_number", (config.p2p_serial_number));
+        co_await SetWpaProperty("serial_number", (config.p2p_serial_number));
     if (config.p2p_sec_device_type != "")
     {
-        SetWpaProperty("sec_device_type", config.p2p_sec_device_type);
+        co_await SetWpaProperty("sec_device_type", config.p2p_sec_device_type);
     }
     if (config.p2p_os_version != "")
-        SetWpaProperty("os_version", config.p2p_os_version);
+        co_await SetWpaProperty("os_version", config.p2p_os_version);
 
-    SetP2pProperty("ssid_postfix", config.p2p_ssid_postfix);
-    SetP2pProperty("per_sta_psk", config.p2p_per_sta_psk ? "1" : "0");
+    co_await SetP2pProperty("ssid_postfix", config.p2p_ssid_postfix);
+
+    if (this->wpaConfigChanged)
+    {
+        std::vector<std::string> response = co_await Request("SAVE_CONFIG\n");
+        if (response.size() == 0 || response[0] != "OK")
+        {
+            Log().Warning("Failed to  save updates to wpa_supplicant.conf");
+        }
+        wpaConfigChanged = false;
+    }
+    co_await SetP2pProperty("per_sta_psk", config.p2p_per_sta_psk ? "1" : "0");
 }
 
-// static void SetNetworkValue(WpaChannel &channel, ssize_t networkId, const std::string &key, const std::string &value)
-// {
-//     channel.RequestOK(SS("SET_NETWORK " << networkId << " " << key << " " << value << "\n"));
-// }
-
-// static void MaybeSetNetworkValue(WpaChannel &channel, ssize_t networkId, const std::string &key, const std::string &value)
-// {
-//     std::string existingValue = channel.RequestString(SS("GET_NETWORK " << networkId << " " << key << "\n"), false);
-//     if (existingValue != value)
-//     {
-//         channel.RequestOK(SS("SET_NETWORK " << networkId << " " << key << " " << value << "\n"));
-//     }
-// }
-// static std::vector<WpaNetworkInfo> WlanListNetworks(WpaChannel &channel)
-// {
-//     auto response = channel.Request("LIST_NETWORKS\n");
-//     if (response.size() == 1 && response[0] == "FAIL")
-//     {
-//         throw WpaIoException(EBADMSG, "Can't enumerate networks on wlan socket.");
-//     }
-//     std::vector<WpaNetworkInfo> result;
-//     for (size_t i = 1; i < response.size(); ++i)
-//     {
-//         result.push_back(WpaNetworkInfo(response[i]));
-//     }
-//     return result;
-// }
-
-int P2pSessionManager::FindNetwork()
+CoTask<int> P2pSessionManager::FindNetwork()
 {
-    auto networks = ListNetworks();
+    auto networks = co_await ListNetworks();
     std::string suffix = "-" + gP2pConfiguration.p2p_ssid_postfix;
     for (auto &network : networks)
     {
@@ -393,86 +398,141 @@ int P2pSessionManager::FindNetwork()
             if (network.Ssid().ends_with(suffix))
             {
                 this->networkBsid = network.Bsid();
-                return network.Id();
+                co_return network.Id();
             }
         }
     }
     Log().Debug(SS("Persistent network not found."));
-    return -1;
-
+    co_return -1;
 }
 
-void P2pSessionManager::OpenChannel(const std::string &interfaceName, bool withEvents)
+CoTask<> P2pSessionManager::OpenChannel(const std::string &interfaceName, bool withEvents)
 {
-    base::OpenChannel(interfaceName, withEvents);
+    co_await base::OpenChannel(interfaceName, withEvents);
 }
 
-void P2pSessionManager::SetUpPersistentGroup()
+static bool IsP2pGroup(const std::string &group)
+{
+    std::string prefix = SS("p2p-" << gP2pConfiguration.wlanInterface << "-");
+    return group.starts_with(prefix);
+}
+CoTask<> P2pSessionManager::RemoveExistingGroups()
 {
 
     // remove any existing groups.
-    auto interfaces = Request("INTERFACES\n");
+    bool groupRemoved = false;
+    auto interfaces = co_await Request("INTERFACES\n");
     for (size_t i = 0; i < interfaces.size(); ++i)
     {
         const std::string &interface = interfaces[i];
-        auto nPos = interface.find_first_of('-'); // avoid proccsing wlanX devices.
-        if (nPos != std::string::npos)
+        if (IsP2pGroup(interface))
         {
-            if (interface != gP2pConfiguration.p2pInterface) // avoid processing ourself
+            try
             {
+                groupRemoved = true;
+                Log().Debug(SS("Removing P2p group " << interface));
+                co_await Request(SS("P2P_GROUP_REMOVE " << interface << '\n'));
+                // Succeeded!! Wait for P2P-GROUP-REMOVED message.
+
                 try
                 {
-                    Request(SS("P2P_GROUP_REMOVE " << interface << '\n'));
-                    // Succeeded!! Wait for P2P-GROUP-REMOVED message.
-
-                    try
-                    {
-                        SynchronousWaitForMessage(WpaEventMessage::P2P_EVENT_GROUP_REMOVED, 10000ms);
-                    }
-                    catch (const CoTimedOutException & /* ignored*/)
-                    {
-                        Log().Warning("Timed out waiting for P2P_EVENT_GROUP_REMOVED.");
-                    }
+                    SynchronousWaitForMessage(WpaEventMessage::P2P_EVENT_GROUP_REMOVED, 10000ms);
                 }
-                catch (const std::exception & /*ignored*/)
+                catch (const CoTimedOutException & /* ignored*/)
                 {
+                    Log().Warning("Timed out waiting for P2P_EVENT_GROUP_REMOVED.");
                 }
+            }
+            catch (const std::exception & /*ignored*/)
+            {
             }
         }
     }
-    this->addingGroup = true;
-    try
+    if (groupRemoved)
     {
-        ListNetworks();
-        SetP2pProperty("ssid_postfix", "-" + gP2pConfiguration.p2p_ssid_postfix);
-        std::string ht40 = gP2pConfiguration.p2p_go_ht40 ? " ht40" : "";
-        std::string vht = gP2pConfiguration.p2p_go_vht ? " vht" : "";
-        std::string he = gP2pConfiguration.p2p_go_he ? " he" : "";
-        //auto networkId = this->networkId;
-        SetWpaProperty("p2p_go_intent", WpaEvent::ToIntLiteral(gP2pConfiguration.p2p_go_intent));
-        if (this->networkId != -1)
+        // give wpa_supplicant a chance to sort out networks?
+        // Whatever the reason, we need to delay in order to prevent getting an UNAVAILABLE error when we try to create our new persistent group.
+        Log().Debug("Waiting for networks to settle after a group change.");
+        co_await this->Delay(10s);
+    }
+}
+CoTask<> P2pSessionManager::SetUpPersistentGroup()
+{
+    // co_await RemoveExistingGroups();
+
+    auto &config = gP2pConfiguration;
+    co_await SetP2pProperty("ssid_postfix", "-" + config.p2p_ssid_postfix);
+    co_await SetWpaProperty("p2p_go_intent", WpaEvent::ToIntLiteral(config.p2p_go_intent));
+
+    std::vector<std::string> interfaces = co_await Request("INTERFACES\n");
+    std::string interfaceName;
+
+    std::string groupPrefix = "p2p-" + config.wlanInterface;
+    for (const std::string &interface : interfaces)
+    {
+        if (interface.starts_with(groupPrefix))
         {
-            RequestOK(SS("P2P_GROUP_ADD persistent=" << networkId << " freq=2412 " << ht40 << vht << he << "\n"));
+            interfaceName = interface;
+            break;
         }
-        else
+    }
+    if (interfaceName != "")
+    {
+        co_await CreateP2pGroup(interfaceName);
+    }
+    else
+    {
+
+        this->addingGroup = true;
+        try
         {
-            RequestOK(SS("P2P_GROUP_ADD persistent freq=2412 " << ht40 << vht << he << "\n"));
+            co_await ListNetworks();
+            std::string ht40 = config.p2p_go_ht40 ? " ht40" : "";
+            std::string vht = config.p2p_go_vht ? " vht" : "";
+            std::string he = config.p2p_go_he ? " he" : "";
+
+            co_await SetWpaProperty("p2p_go_intent", WpaEvent::ToIntLiteral(config.p2p_go_intent));
+            if (this->networkId != -1)
+            {
+                co_await RequestOK(SS("P2P_GROUP_ADD persistent=" << networkId << " freq=" << config.wifiGroupFrequency << ht40 << vht << he << "\n"));
+            }
+            else
+            {
+                co_await RequestOK(SS("P2P_GROUP_ADD persistent freq=" << config.wifiGroupFrequency << ht40 << vht << he << "\n"));
+            }
+            SynchronousWaitForMessage(WpaEventMessage::P2P_EVENT_GROUP_STARTED, 40000ms);
+            Log().Debug(SS("Created persistent P2p Group."));
+
+            this->addingGroup = false;
         }
-        SynchronousWaitForMessage(WpaEventMessage::P2P_EVENT_GROUP_STARTED, 10000ms);
-        this->addingGroup = false;
+        catch (const CoTimedOutException & /* ignored*/)
+        {
+            this->addingGroup = false;
+            Log().Error("Timed out waiting for P2P_EVENT_GROUP_STARTED.");
+            SetFinished();
+            throw CoIoException(EBADMSG, "Timed out waiting for P2P_EVENT_GROUP_STARTED.");
+        }
+        catch (const std::exception &e)
+        {
+            this->addingGroup = false;
+            throw CoIoException(EBADMSG, SS("Failed to start Group. " << e.what()));
+        }
     }
-    catch (const CoTimedOutException & /* ignored*/)
+    if (gP2pConfiguration.runDnsMasq)
     {
-        this->addingGroup = false;
-        Log().Error("Timed out waiting for P2P_EVENT_GROUP_STARTED.");
-        SetComplete();
-        throw CoIoException(EBADMSG, "Timed out waiting for P2P_EVENT_GROUP_STARTED.");
+        try {
+        this->dnsMasqProcess.Start(this->GetSharedLog(),this->interfaceName);
+        co_await this->Delay(100ms);
+        if (this->dnsMasqProcess.HasTerminated()) {
+            co_await dnsMasqProcess.Stop(); // flush output to log.
+            Log().Warning("Failed to start dnsmasq DHCP server.");
+        }
+        } catch (const std::exception & e)
+        {
+            Log().Warning(SS("Failed to start dnsmasq DHCP server. " << e.what()));        
+        }
     }
-    catch (const std::exception &e)
-    {
-        this->addingGroup = false;
-        throw CoIoException(EBADMSG, SS("Failed to start Group. " << e.what()));
-    }
+    Log().Info("Ready");
 }
 
 void P2pSessionManager::SynchronousWaitForMessage(WpaEventMessage message, std::chrono::milliseconds timeout)
@@ -496,22 +556,62 @@ void P2pSessionManager::SynchronousWaitForMessage(WpaEventMessage message, std::
     }
 }
 
-std::unique_ptr<P2pGroup> P2pSessionManager::OnGroupStarted(const P2pGroupInfo &groupInfo)
+CoTask<> P2pSessionManager::CreateP2pGroup(const std::string &interfaceName)
+{
+    try
+    {
+        unique_ptr<P2pGroup> group = std::make_unique<P2pGroup>(this, interfaceName);
+        group->SetLog(this->GetSharedLog());
+        if (TraceMessages())
+        {
+            group->TraceMessages(true, "    " + interfaceName);
+        }
+        co_await group->OpenChannel();
+
+        activeGroups.push_back(std::move(group));
+        Log().Info("P2P group available.");
+        this->interfaceName = interfaceName;
+    }
+    catch (const std::exception &e)
+    {
+        Log().Error(SS("Failed to create P2pGroup for " << interfaceName << ". " << e.what()));
+    }
+}
+
+CoTask<> P2pSessionManager::AttachDnsMasq()
+{
+    CoExec coExec;
+    // dnsmasq doesn't automatically attach to our new network.
+    // To get it to do so, restart the service.
+
+    // prompts for sudo when developing.
+    // runs without prompts when running as a daemon.
+    Log().Info("Restarting dnsmasq service.");
+    std::string output;
+    std::vector<std::string> args{ "restart","dnsmasq"};
+    bool result = co_await coExec.CoExecute("/usr/bin/systemctl", args,&output);
+    if (result != 0)
+    {
+        Log().Error("Failed to restart dnsmasq service.");
+        if (output.length() != 0)
+        {
+            Log().Error("-- " + output);
+        }
+    }
+
+    co_return;
+}
+
+CoTask<> P2pSessionManager::OnGroupStarted(
+    const P2pGroupInfo &groupInfo)
 {
     // this->activeGroup = std::make_unique<P2pGroupInfo>(event);
+    co_await CreateP2pGroup(groupInfo.interface);
 
-    unique_ptr<P2pGroup> group = std::make_unique<P2pGroup>(this, groupInfo);
-    group->SetLog(this->GetSharedLog());
-    if (TraceMessages())
-    {
-        group->TraceMessages(true, "    " + groupInfo.interface);
-    }
-    this->networkId = FindNetwork();
-    group->OpenChannel();
-
-    return group;
+//    co_await AttachDnsMasq();
+    co_return;
 }
-void P2pSessionManager::OnGroupRemoved(const WpaEvent &event)
+CoTask<> P2pSessionManager::OnGroupRemoved(const WpaEvent &event)
 {
     // <3>P2P-PROV-DISC-SHOW-PIN d6:fe:1f:53:52:dc 91770561
     //    p2p_dev_addr=d6:fe:1f:53:52:dc
@@ -522,33 +622,41 @@ void P2pSessionManager::OnGroupRemoved(const WpaEvent &event)
 
     // <3>P2P-GROUP-REMOVED p2p-wlan0-13 GO reason=UNAVAILABLE
     if (event.parameters.size() < 1)
-        return;
+        co_return;
     auto interfaceName = event.parameters[0];
     for (auto i = activeGroups.begin(); i != activeGroups.end(); ++i)
     {
-        if ((*i)->GroupInfo().interface == interfaceName)
+        if ((*i)->GetInterfaceName() == interfaceName)
         {
+
+            // don't delete while in vector erase.
+            std::unique_ptr<P2pGroup> p = std::move(*i);
             activeGroups.erase(i);
+
+            // now delete it.
+            p = nullptr;
+
             if (activeGroups.size() == 0)
             {
                 Log().Info(SS("P2P Group closed (Reason=" << event.GetNamedParameter("reason") << ")"));
-                SetComplete();
+                SetFinished();
             }
             break;
         }
     }
 }
 
-void P2pSessionManager::SetP2pProperty(const std::string &name, const std::string &value)
+CoTask<> P2pSessionManager::SetP2pProperty(const std::string &name, const std::string &value)
 {
-    auto response = Request(SS("P2P_SET " << name << " " << value << "\n"));
+    auto response = co_await Request(SS("P2P_SET " << name << " " << value << "\n"));
     if (response.size() != 1 || response[0] != "OK")
     {
         Log().Warning(SS("Can't set p2p property " << name));
     }
+    co_return;
 }
 
-void P2pSessionManager::OnProvDiscPbcReq(const WpaEvent &event)
+CoTask<> P2pSessionManager::OnProvDiscPbcReq(const WpaEvent &event)
 {
     // <3>P2P-PROV-DISC-PBC-REQ 6a:cd:15:4f:30:33
     //  p2p_dev_addr=6a:cd:15:4f:30:33
@@ -584,23 +692,28 @@ void P2pSessionManager::OnProvDiscPbcReq(const WpaEvent &event)
     {
         persistent = "persistent";
     }
-    Request("WPS_PBC\n");
-    if (this->activeGroups.size() != 0)
     {
-        // this->activeGroups[0]->Request("WPS_PBC\n");
+        std::lock_guard lock { this->mxEnrollmentRecord};
+        this->enrollmentRecord.pin = "";
+        this->enrollmentRecord.deviceId = event.getParameter(0);
+        this->enrollmentRecord.pbc = true;
+        this->enrollmentRecord.active = true;
     }
+
     std::string command = SS("P2P_CONNECT "
                              << event.parameters[0]
                              << " pbc"
                              << " " << persistent
                              << " go_intent=" << config.p2p_go_intent
+                             << " freq=" << config.wifiGroupFrequency // do NOT frequency hop when connected.
                              << (config.p2p_go_ht40 ? " ht40" : "")
                              << (config.p2p_go_vht ? " vht" : "")
                              << (config.p2p_go_he ? " he" : "")
                              << '\n');
-    RequestOK(command);
+    co_await RequestOK(command);
+    co_return;
 }
-void P2pSessionManager::OnProvDiscShowPin(const WpaEvent &event)
+CoTask<> P2pSessionManager::OnProvDiscShowPin(const WpaEvent &event)
 {
     // <3>P2P-PROV-DISC-SHOW-PIN d6:fe:1f:53:52:dc 91770561
     //    p2p_dev_addr=d6:fe:1f:53:52:dc
@@ -608,17 +721,29 @@ void P2pSessionManager::OnProvDiscShowPin(const WpaEvent &event)
     //    name='Android_8d64'
     //    config_methods=0x188
     //    dev_capab=0x25 group_capab=0x0
-    if (event.parameters.size() < 1)
+    if (event.parameters.size() < 2)
     {
         throw invalid_argument("Invalid P2P-PROV-DISC-SHOW-PIN event.");
     }
     auto &config = gP2pConfiguration;
 
-    if (config.p2p_config_method != "keypad")
+    if (config.p2p_config_method != "keypad" && config.p2p_config_method != "label")
     {
         throw logic_error("P2P-PROV-DISC-SHOW-PIN not enabled.");
     }
-    networkId = FindNetwork();
+    std::string pin;
+    if (config.p2p_config_method == "label")
+    {
+        pin = config.p2p_pin;
+    }
+    else
+    {
+        pin = event.getParameter(1);
+        Log().Debug("------------------------");
+        Log().Debug("     " + pin);
+        Log().Debug("------------------------");
+    }
+
     std::string persistent;
     if (networkId != -1)
     {
@@ -628,43 +753,32 @@ void P2pSessionManager::OnProvDiscShowPin(const WpaEvent &event)
     {
         persistent = "persistent";
     }
-    PreAuthorize(); // use our pin, not a randomly generated one.
+
+    {
+        std::lock_guard lock { this->mxEnrollmentRecord};
+        this->enrollmentRecord.pin = pin;
+        this->enrollmentRecord.deviceId = event.getParameter(0);
+        this->enrollmentRecord.pbc = false;
+        this->enrollmentRecord.active = true;
+    }
+
 
     std::string command = SS("P2P_CONNECT "
-                             << event.parameters[0]
-                             << " " << config.p2p_pin
-                             << " keypad"
+                             << event.getParameter(0)
+                             << " " << pin
+                             << " " << "keypad"
                              << " " << persistent
                              << " go_intent=" << config.p2p_go_intent
+                             << " freq=" << config.wifiGroupFrequency // do NOT frequency hop when connected.
                              << (config.p2p_go_ht40 ? " ht40" : "")
                              << (config.p2p_go_vht ? " vht" : "")
                              << (config.p2p_go_he ? " he" : "")
+                             // << " provdisc"
                              << '\n');
-    std::string pin = RequestString(command);
-}
-
-void P2pSessionManager::PreAuthorize()
-{
-    auto &config = gP2pConfiguration;
-    if (config.p2p_config_method == "none")
+    std::string strResult = co_await RequestString(command);
+    if (strResult != "OK")
     {
-        RequestOK("WPS_PBC\n"); // PBC is enabled by default!
-    }
-    else if (config.p2p_config_method == "keypad")
-    {
-        std::string bsid = networkBsid;
-        if (bsid == "any")
-        {
-            throw logic_error("Invalid network bsid.");
-        }
-
-
-
-        // if our network has a bssid assigned, used it, otherwise use "any" - which generates a one-time password.
-        std::string request = SS("WPS_REG " << bsid << " " << config.p2p_pin << '\n');
-
-        RequestOK(request);
-
+        throw CoIoException(EBADMSG, "P2P_CONNECT FAILED.");
     }
 }
 
@@ -675,88 +789,136 @@ P2pSessionManager::P2pSessionManager()
     SetLog(log);
 }
 
-CoTask<> P2pSessionManager::ScanProc() {
-    // We need to nominally keep track of wifi channel usage so that 
+CoTask<> P2pSessionManager::ScanProc()
+{
+    // We need to nominally keep track of wifi channel usage so that
     // wpa_supplicant can choose an lightly-used wifi channel.
     // So scan hard initially, and then only occasionally thereafter.
-
-    try {
-        P2pFind();
-        co_await Delay(60s);
-        P2pListen();
-
-        for (int i = 0; i < 10; ++i)
-        {
-            co_await Delay(60s);
-            P2pFind();
-            co_await Delay(10s);
-            P2pListen();
-        }
-        while (true)
-        {
-            co_await Delay(300s);
-            P2pFind();
-            co_await Delay(15s);
-            P2pListen();
-
-        }
-    } catch (const std::exception &ignored)
-    {
-        // we arrive here normally during shutdown.
-        // but if there are other issues, here is not the place ot deal with them.
-    }
-}
-CoTask<> P2pSessionManager::KeepAliveProc()
-{
-    // Ping every 15 seconds, just to make sure wpa_supplicant is responsive.
+    // XXX: Suspend this while an enrollment is underway!
+    // Channel hopping would be bad.
     try
     {
-        Ping();
-        co_await this->Delay(15000ms);
-    }
-    catch (const WpaDisconnectedException &)
-    {
+        while (true)
+        {
+        start:
+            while (connectedStations != 0)
+            {
+                co_await Delay(2s);
+            }
+            co_await P2pFind();
+            co_await Delay(63s);
+            if (connectedStations != 0)
+                goto start; // REMAIN in Listen mode if we are connected.
+
+            co_await P2pStopFind();
+
+            for (int i = 0; i < 10; ++i)
+            {
+                co_await Delay(120s);
+                if (connectedStations != 0)
+                    goto start;
+
+                co_await P2pFind();
+
+                co_await Delay(15s);
+                if (connectedStations != 0)
+                    goto start;
+
+                co_await P2pStopFind();
+            }
+            while (true)
+            {
+                co_await Delay(321s);
+                if (connectedStations != 0)
+                    goto start;
+
+                co_await P2pFind();
+                co_await Delay(15s);
+                if (connectedStations != 0)
+                    goto start;
+
+                co_await P2pStopFind();
+            }
+        }
     }
     catch (const std::exception &e)
     {
-        Log().Error(SS("wpa_supplicant is not responding. " << e.what()));
+        // we arrive here normally during shutdown.
+        // but if there are other issues, here is not the place ot deal with them.
+        Log().Debug(SS("Listen thread terminated." << e.what()));
     }
-    co_return;
 }
 
 static std::string MakeUpnpServiceName()
 {
-    return SS("uuid:" << gP2pConfiguration.upnpUuid << "::urn:schemas-twoplay-com:service:PiPedal:1");
+    return SS("uuid:" << gP2pConfiguration.service_guid << "::urn:schemas-twoplay-com:service:PiPedal:1");
 }
 
-void P2pSessionManager::StopServiceDiscovery()
+CoTask<> P2pSessionManager::StopServiceDiscovery()
 {
-    RequestOK(SS("P2P_SERVICE_DEL upnp 10 " << MakeUpnpServiceName() << '\n'));
+    co_await RequestOK(SS("P2P_SERVICE_DEL upnp 10 " << MakeUpnpServiceName() << '\n'));
 }
 
-
-void P2pSessionManager::StartServiceDiscovery()
+CoTask<> P2pSessionManager::StartServiceDiscovery()
 {
     // We will will handle our own service discovery requests.
 
     // RequestOK("P2P_SERVICE_UPDATE\n");
 
-    if (gP2pConfiguration.upnpUuid == "")
+    if (gP2pConfiguration.service_guid == "")
     {
-        gP2pConfiguration.upnpUuid = os::MakeUuid();
+        gP2pConfiguration.service_guid = os::MakeUuid();
         gP2pConfiguration.Save();
     }
-    RequestOK(SS("P2P_SERVICE_ADD upnp 10 " << MakeUpnpServiceName() << '\n'));
+    co_await RequestOK(SS("P2P_SERVICE_ADD upnp 10 " << MakeUpnpServiceName() << '\n'));
 }
 
 CoTask<> P2pSessionManager::Open(const std::string &interfaceName)
 {
-    auto & config = gP2pConfiguration;
+    auto &config = gP2pConfiguration;
 
     config.wlanInterface = interfaceName;
     config.p2pInterface = "p2p-dev-" + interfaceName;
     co_await base::Open(config.p2pInterface);
     co_return;
-
 }
 
+CoTask<> P2pSessionManager::OnDeviceFound(P2pDeviceInfo &&device)
+{
+    //<3>P2P-DEVICE-FOUND b0:a7:37:b3:72:21 p2p_dev_addr=b2:a7:37:b3:72:1f pri_dev_type=6-0050F204-1
+    //    name='Roku 3' config_methods=0x0 dev_capab=0x35 group_capab=0x2b
+    //    wfd_dev_info=0x01111c440096 vendor_elems=1 new=1
+    bsidToNameMap[device.p2p_dev_addr] = device.name;
+    co_return;
+}
+CoTask<> P2pSessionManager::OnDeviceLost(std::string p2p_dev_addr)
+{
+    bsidToNameMap.erase(p2p_dev_addr);
+    co_return;
+}
+
+
+CoTask<> P2pSessionManager::CloseGroup(P2pGroup* group)
+{
+    Dispatcher().PostDelayedFunction(
+        Dispatcher().Now(),
+        [this,group] () {
+            for (size_t i = 0; i < activeGroups.size(); ++i)
+            {
+                if (activeGroups[i].get() == group)
+                {
+                    if (activeGroups[i].get() == group)
+                    {
+                        Log().Debug(SS("P2P Group closed."));
+                        activeGroups.erase(activeGroups.begin()+i); // deletes the group!
+                    }
+                }
+                if (activeGroups.size() == 0)
+                {
+                    Log().Info("P2P Group closed.");
+                    SetFinished();
+                }
+            }
+        });
+    co_return;    
+}

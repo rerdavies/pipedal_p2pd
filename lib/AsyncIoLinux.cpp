@@ -13,6 +13,7 @@
 #include <chrono>
 #include <sys/ioctl.h>
 #include "cotask/CoService.h"
+#include "ss.h"
 
 using namespace cotask;
 using namespace std;
@@ -36,16 +37,12 @@ public:
     {
         if (AsyncIo::instance != nullptr)
         {
-            cout << "Error: More than one instance of AsyncIo." << endl;
-            cout.flush();
-            std::terminate();
+            Terminate("Error: More than one instance of AsyncIo.");
         }
         epoll_fd = epoll_create1(0);
         if (epoll_fd < 0)
         {
-            cout << "Error: epoll_create1 failed (" << strerror(errno) << ")" << endl;
-            cout.flush();
-            terminate();
+            Terminate(SS("Error: epoll_create1 failed (" << strerror(errno) << ")"));
         }
 
         AsyncIo::instance = this;

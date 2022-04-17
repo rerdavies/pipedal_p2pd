@@ -8,7 +8,7 @@
 namespace cotask
 {
 
-    enum LogLevel
+    enum class LogLevel
     {
         Debug,
         Info,
@@ -105,23 +105,27 @@ namespace cotask
         {
             std::lock_guard lock{mutex};
             std::cout << now() << " Debug: " << message << std::endl;
+            std::cout.flush();
         }
         virtual void OnInfo(const std::string &message)
         {
             std::lock_guard lock{mutex};
             std::cout << now()<< " Info: " << message << std::endl;
+            std::cout.flush();
         }
         virtual void OnWarning(const std::string &message) 
         {
             std::lock_guard lock{mutex};
             std::cout << now() << " Warning: " << message << std::endl;
+            std::cout.flush();
         }
         virtual void OnError(const std::string &message) 
                 {
             std::lock_guard lock{mutex};
             std::cout << now() << " Error: " << message << std::endl;
+            std::cout.flush();
         }
-
+ 
     };
 
 } // namespace

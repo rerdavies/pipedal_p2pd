@@ -15,8 +15,23 @@
 #include <list>
 #include "CoExceptions.h"
 
-// ignoring the results of [[nodiscard]] Task<> generates an error.
+#ifdef __GNUC__
+// ignoring the results of [[nodiscard]] CoTask<> fn() is a serious error! (not just a warning)
 #pragma GCC diagnostic error "-Wunused-result"
+
+
+#define P2P_GCC_VERSION() (__GNUC__*100 + __GNUC_MINOR__)
+
+// coroutines generate suprious error "statement has no effect [-Werror=unused-value] in GCC 10.2
+// (Fixed  in GCC 10.3.0)
+#if P2P_GCC_VERSION() < 1003
+
+#   pragma GCC diagnostic ignored "-Wunused-value"
+#endif
+
+#endif
+
+
 
 namespace cotask
 {
@@ -57,12 +72,14 @@ namespace cotask
 
     private:
         static CoDispatcher *CreateMainDispatcher();
+        static CoDispatcher *gForegroundDispatcher;
 
         CoDispatcher();
         CoDispatcher(CoDispatcher *pForegroundDispatcher, CoTaskSchedulerPool *pSchedulerPool);
         ~CoDispatcher();
 
     public:
+        static CoDispatcher &ForegroundDispatcher();
         static CoDispatcher &CurrentDispatcher();
         static void DestroyDispatcher();
 
@@ -134,6 +151,8 @@ namespace cotask
         void ScavengeTasks();
         bool inMessageLoop = false;
         bool quit = false;
+
+        bool messagePosted = false;
         void PumpMessageNotifyOne();
         void PumpMessageWaitOne();
         uint64_t nextTimerHandle = 0;
@@ -444,20 +463,41 @@ namespace cotask
             try
             {
                 await_resume();
-                handle.destroy();
-                handle = nullptr;
-                return;
             }
-            catch (std::exception &e)
+            catch (const std::exception &e)
             {
-                handle.destroy();
-                handle = nullptr;
+                try {
+                    handle.destroy();
+                    handle = nullptr;
+                } catch (const std::exception &e2)
+                {
+                    Dispatcher().Log().Error(e.what());
+                    Dispatcher().Log().Error(std::string("Exception while deleting coroutine. ") + e2.what() );
+                    std::terminate();
+                }
+
                 throw;
             }
+            try {
+                handle.destroy();
+                handle = nullptr;
+            }
+            catch(const std::exception& e)
+            {
+                Dispatcher().Log().Error(e.what());
+                std::terminate();
+            }
+                
+            return;
         }
 
         // This handle is assigned to when the coroutine itself is suspended (see await_suspend above)
-        std::coroutine_handle<promise_type> handle = nullptr;
+        std::coroutine_handle<promise_type> handle;
+
+        CoTask()
+        :handle(nullptr) {
+            
+        }
 
         // To satisfy VS code. Unsure if this is correct in newer C++20 standards.
         CoTask(std::coroutine_handle<promise_type> handle)
@@ -475,7 +515,8 @@ namespace cotask
             {
                 this->handle.destroy();
             }
-            this->handle = std::exchange(other.handle, nullptr);
+            this->handle = other.handle;
+            other.handle = nullptr;
             return *this;
         }
         ~CoTask()
@@ -504,7 +545,7 @@ namespace cotask
 
             void await_suspend(std::coroutine_handle<> coroutine) noexcept
             {
-                CoDispatcher::CurrentDispatcher().PostDelayed(delayMs, coroutine);
+                    CoDispatcher::CurrentDispatcher().PostDelayed(delayMs, coroutine);
             }
 
             void await_resume() const noexcept
@@ -550,8 +591,21 @@ namespace cotask
         return awaiter{};
     }
 
+    /**
+     * @brief Terminate the current process with an error message.
+     * 
+     * Used to indicate that something went irrecoverably wrong.
+     * 
+     * @param message The message to display when terminating.
+     */
+    extern void Terminate(const std::string & message);
+
     /**************************/
 
+    inline CoDispatcher& CoDispatcher::ForegroundDispatcher() 
+    {
+        return *gForegroundDispatcher;
+    }
     inline CoDispatcher &CoDispatcher::CurrentDispatcher()
     {
         CoDispatcher *pResult = pInstance;

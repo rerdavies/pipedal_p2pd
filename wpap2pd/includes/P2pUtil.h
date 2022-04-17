@@ -25,7 +25,7 @@ namespace p2p {
      * @param value The string to parse.
      * @return int64_t The parsed value.
      * @throws std::invalid_argument if the supplied string is not a valid int64_t.
-     * @see toInt<T>(const std::string & ), toUint<T>(const std::string & ), toUint64(const std::string & ), to toUint64(const std::string & )
+     * @see ToInt<T>(const std::string & ), toUint<T>(const std::string & ), toUint64(const std::string & ), to toUint64(const std::string & )
      * 
      */
     int64_t toInt64(const std::string & value);
@@ -38,10 +38,10 @@ namespace p2p {
      * @return T The parsed result.
      * @throws std::invalid_argument if the supplied string is not a valid integer.
      * @throws std::range_error if the resulting value does not fit into T.
-     * @see toInt<T>(const std::string & ), toInt64(const std::string & ), to toUint64(const std::string & )
+     * @see ToInt<T>(const std::string & ), toInt64(const std::string & ), to toUint64(const std::string & )
      */
     template <std::integral T>
-    T toInt(const std::string&value)
+    T ToInt(const std::string&value)
     {
         int64_t result = toInt64(value);
         T typedResult = (T)result;
@@ -53,22 +53,22 @@ namespace p2p {
     }
 
     /**
-     * @brief Specialization of toInt<T> for int64_t.
+     * @brief Specialization of ToInt<T> for int64_t.
      * 
-     * @see toInt<T>(const std::string & ), toInt64(const std::string & ), to toUint64(const std::string & )
+     * @see ToInt<T>(const std::string & ), toInt64(const std::string & ), to toUint64(const std::string & )
      */
     template <>
-    inline int64_t toInt<int64_t>(const std::string&value)
+    inline int64_t ToInt<int64_t>(const std::string&value)
     {
         return toInt64(value);
     }
     /**
-     * @brief Specialization of toInt<T> for uint64_t.
+     * @brief Specialization of ToInt<T> for uint64_t.
      * 
-     * @see toInt<T>(const std::string & ), toUint64(const std::string & ), to toUint64(const std::string & )
+     * @see ToInt<T>(const std::string & ), toUint64(const std::string & ), to toUint64(const std::string & )
      */
     template <>
-    inline uint64_t toInt<uint64_t>(const std::string&value)
+    inline uint64_t ToInt<uint64_t>(const std::string&value)
     {
         return toUint64(value);
     }
@@ -118,5 +118,32 @@ namespace p2p {
     detail::FinalAction<F> finally(F f) {
         return detail::FinalAction<F>(f); 
     }
+
+    /**
+     * @brief Convert string to config file format.
+     * 
+     * Adds quotes and escapes, but only if neccessary. 
+     * 
+     * Source text is assumed to be UTF-8. Escapes for the
+     * following values only: \r \n \t \" \\.
+     * 
+     * 
+     * @param s 
+     * @return std::string Encoded string.
+     */
+    std::string EncodeString(const std::string&s);
+
+    /**
+     * @brief Config file format to string.
+     * 
+     * Decodes quotes and escapes, but only if neccessary. 
+     * 
+     * Source text is assumed to be UTF-8. Escapes for the
+     * following values only: \r \n \t \" \\.
+     * 
+     * @param s 
+     * @return std::string 
+     */
+    std::string DecodeString(const std::string&s);
 
 } // namepace.

@@ -9,6 +9,7 @@ add_executable(wpap2pd
     ${WPA_CTRL_PATH}/common/wpa_ctrl.c
     ${WPA_CTRL_PATH}/utils/os_unix.c
 
+    static_vector.h
     WpaCtrl.cpp includes/WpaCtrl.h
 
     WpaEvent.cpp includes/WpaEvent.h
@@ -22,6 +23,7 @@ add_executable(wpap2pd
     P2pSessionManager.cpp includes/P2pSessionManager.h 
     P2pGroup.cpp includes/P2pGroup.h
     CommandLineParser.h
+    DnsMasqProcess.cpp includes/DnsMasqProcess.h
     AsanOptions.cpp
 )
 target_compile_definitions(wpap2pd PRIVATE CONFIG_CTRL_IFACE CONFIG_CTRL_IFACE_UNIX)

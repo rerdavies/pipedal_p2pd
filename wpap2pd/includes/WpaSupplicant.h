@@ -115,45 +115,53 @@ namespace p2p {
         CoTask<> Close();
 
         /* See: https://hostap.epitest.fi/wpa_supplicant/devel/ctrl_iface_page.html */
-        std::vector<std::string> MIB() { return Request("MIB\n"); }
-        WpaStatusInfo Status();
-        void Logon() { RequestOK("LOGON\n"); }
-        void Logoff() { RequestOK("LOGOFF\n"); }
-        void Reassociate() { RequestOK("REASSOCIATE\n"); };
-        void PreAuth(std::string bssid);
-        void Attach() { RequestOK("ATTACH\n"); }
-        void Detach() { RequestOK("DETACH\n"); }
-        void Level(std::string debugLevel);
-        void Reconfigure() { RequestOK("RECONFIGURE\n");}
-        void Terminate() { RequestOK("TERMINATE\n");}
-        void Bssid(int network, std::string bssid);
-        void Disconnect() { RequestOK("DISCONNECT\n"); }
-        void Scan() { RequestOK("SCAN\n"); }
-        void EnableNetwork(int networkId);
-        void DisableNetwork(int networkId);
-        std::vector<WpaScanInfo> ScanResults();
+        CoTask<std::vector<std::string>> MIB() { return Request("MIB\n"); }
+        CoTask<WpaStatusInfo> Status();
+        CoTask<> Logon() { return RequestOK("LOGON\n"); }
+        CoTask<> Logoff() { return RequestOK("LOGOFF\n"); }
+        CoTask<> Reassociate() { return RequestOK("REASSOCIATE\n"); };
+        CoTask<> PreAuth(std::string bssid);
+        CoTask<> Attach() { return RequestOK("ATTACH\n"); }
+        CoTask<> Detach() { return RequestOK("DETACH\n"); }
+        CoTask<> Level(std::string debugLevel);
+        CoTask<> Reconfigure() { return RequestOK("RECONFIGURE\n");}
+        CoTask<> Terminate() { return RequestOK("TERMINATE\n");}
+        CoTask<> Bssid(int network, std::string bssid);
+        CoTask<> Disconnect() { return RequestOK("DISCONNECT\n"); }
+        CoTask<> Scan() { return RequestOK("SCAN\n"); }
+        CoTask<> EnableNetwork(int networkId);
+        CoTask<> DisableNetwork(int networkId);
+        CoTask<std::vector<WpaScanInfo>> ScanResults();
          
 
-        std::vector<WpaNetworkInfo> ListNetworks();
+        CoTask<std::vector<WpaNetworkInfo>> ListNetworks();
 
     public:
-        std::string GetWpaProperty(const std::string&name);
-        void SetWpaProperty(const std::string&name, const std::string &value);
-        virtual void UdateWpaConfig();
+        CoTask<std::string> GetWpaProperty(const std::string&name);
+        CoTask<> SetWpaProperty(const std::string&name, const std::string &value);
+        virtual CoTask<> UdateWpaConfig();
     public:
 
-        void P2pFind() { RequestOK("P2P_FIND\n"); }
-        void P2pFind(int timeoutSeconds);
-        void P2pFind(int timeoutSeconds, const std::string & type);
-        void P2pListen() { RequestOK("P2P_LISTEN\n"); }
-        void P2pStopFind() { RequestOK("P2P_STOP_FIND\n"); }
+        CoTask<> P2pFind() { return RequestOK("P2P_FIND\n"); }
+        CoTask<> P2pFind(int timeoutSeconds);
+        CoTask<> P2pFind(int timeoutSeconds, const std::string & type);
+        CoTask<> P2pListen() { return RequestOK("P2P_LISTEN\n"); }
+        CoTask<> P2pStopFind() { return RequestOK("P2P_STOP_FIND\n"); }
 
-
+        bool IsFinished() { return isFinished; }
     protected:
+
+        void SetFinished() {
+            isFinished = true;
+        }
+
+
+        CoTask<> KeepAliveProc();
+
         // hide
-        virtual void OpenChannel(const std::string &interface, bool withEvents)
+        virtual CoTask<> OpenChannel(const std::string &interface, bool withEvents)
         {
-            base::OpenChannel(interface,withEvents);
+            return base::OpenChannel(interface,withEvents);
         }
         virtual void CloseChannel()
         {
@@ -162,12 +170,14 @@ namespace p2p {
 
         virtual CoTask<> CoOnInit() { co_return; }
         virtual CoTask<> CoOnUnInit() { co_return; }
-        virtual void OnEvent(const WpaEvent &event) { 
-            base::OnEvent(event);
+        virtual CoTask<> OnEvent(const WpaEvent &event) { 
+            co_await base::OnEvent(event);
         }
         virtual void PostQuit();
 
     private:
+        bool isFinished = false;
+
         bool open = false;
         bool wpaConfigChanged = false;
 
@@ -178,8 +188,6 @@ namespace p2p {
         std::vector<WpaNetworkInfo> networks;
 
 
-
-        void UpdateStatus();
 
 
 

@@ -31,25 +31,31 @@ namespace p2p
         using key_value_pair = std::pair<std::string,std::string>;
         EventPriority priority;
         WpaEventMessage message;
-        std::string messageString; // only for Unknown messags.
+        std::string messageString; // only for WpaEventMessage::WPA_UNKOWN_MESSAGE and WpaEventMessage::FAIL messages.
         std::vector<std::string> parameters;
         std::vector<key_value_pair> namedParameters;
+        std::vector<std::string> options;
 
         const std::string&GetNamedParameter(const std::string&name) const;
         template<std::integral  T> 
         T GetNumericParameter(const  std::string &name) const {
             try {
-                return toInt<T>(GetNamedParameter(name));
+                return ToInt<T>(GetNamedParameter(name));
             } catch (const std::exception &e)
             {
                 throw std::invalid_argument("Invalid property " +name +": " + e.what());
             }
         }
+        const std::string getParameter(size_t index) const
+        {
+            if (index >= parameters.size()) return "";
+            return parameters[index];
+        }
         
         template<std::integral  T> 
         T GetNumericParameter(const  std::string &name, T defaultValue) const {
             try {
-                return toInt<T>(GetNamedParameter(name));
+                return ToInt<T>(GetNamedParameter(name));
             } catch (const std::exception &e)
             {
                 return defaultValue;

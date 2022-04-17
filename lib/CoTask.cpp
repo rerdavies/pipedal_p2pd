@@ -2,15 +2,18 @@
 #include <chrono>
 #include "ss.h"
 #include "CoTaskSchedulerPool.h"
+#include "cotask/Os.h"
 
 using namespace cotask;
 using namespace std;
 
+static constexpr bool debugTimers = false;
 using Clock = std::chrono::steady_clock;
 
 thread_local CoDispatcher *CoDispatcher::pInstance;
-
+CoDispatcher *CoDispatcher::gForegroundDispatcher;
 std::mutex CoDispatcher::gLogMutex;
+
 
 CoDispatcher::TimeMs CoDispatcher::Now()
 {
@@ -51,6 +54,7 @@ uint64_t CoDispatcher::PostDelayedFunction(TimeMs delay, std::function<void(void
             handle = ++nextTimerHandle;
             TimerFunctionEntry entry{Now() + delay, callback, handle};
             bool inserted = false;
+            if (debugTimers) Log().Debug(SS("insert fn " << functionTimerQueue.size() << "  "));
             for (auto i = functionTimerQueue.begin(); i != functionTimerQueue.end(); ++i)
             {
                 if (entry.time.count() < i->time.count())
@@ -64,6 +68,7 @@ uint64_t CoDispatcher::PostDelayedFunction(TimeMs delay, std::function<void(void
             {
                 functionTimerQueue.push_back(entry);
             }
+            if (debugTimers) Log().Debug(SS("...." << functionTimerQueue.size()));
         }
         PumpMessageNotifyOne();
         return handle;
@@ -83,6 +88,7 @@ bool CoDispatcher::CancelDelayedFunction(uint64_t handle)
         if (i->timerHandle == handle)
         {
             functionTimerQueue.erase(i);
+            if (debugTimers) Log().Debug(SS("fn timer cancelled: " << functionTimerQueue.size()));
             return true;
         }
     }
@@ -112,6 +118,12 @@ void CoDispatcher::Post(std::coroutine_handle<> handle)
 
 void CoDispatcher::PumpUntilIdle()
 {
+    if (!IsForeground())
+    {
+        throw logic_error("Can't perform this operation on a background thread.");
+        return;
+    }
+
     while (!IsDone())
     {
         PumpMessages();
@@ -171,9 +183,16 @@ bool CoDispatcher::PumpTimerMessages(TimeMs time)
             if (functionTimerQueue.begin()->time <= time)
             {
                 auto fn = functionTimerQueue.begin()->fn;
+
+                if (debugTimers) Log().Debug(SS("fn executed: " << functionTimerQueue.size() << "..."));
+
                 functionTimerQueue.pop_front();
+
+                if (debugTimers) Log().Debug(SS("...." << functionTimerQueue.size()));
+
                 lock.unlock();
                 fn();
+
                 return true;
             }
             return false;
@@ -200,7 +219,13 @@ bool CoDispatcher::PumpTimerMessages(TimeMs time)
                 if (functionTimerQueue.front().time <= time)
                 {
                     auto fn = functionTimerQueue.front().fn;
+
+                    if (debugTimers) Log().Debug(SS("fn executed: " << functionTimerQueue.size() << "..."));
+
                     functionTimerQueue.pop_front();
+
+                    if (debugTimers) Log().Debug(SS("...." << functionTimerQueue.size()));
+
                     lock.unlock();
                     fn();
                     return true;
@@ -331,7 +356,7 @@ void CoDispatcher::PumpMessages(std::chrono::milliseconds timeout)
             }
             {
                 std::unique_lock lock{pumpMessageMutex};
-                TimeMs delay = waitTime - Now();
+                TimeMs delay = waitTime - now;
                 if (delay < 1ms)
                     delay = 1ms;
                 pumpMessageConditionVariable.wait_for(lock, delay);
@@ -350,37 +375,36 @@ void CoDispatcher::PumpMessages(std::chrono::milliseconds timeout)
 
 bool CoDispatcher::PumpMessages(bool waitForTimers)
 {
-    bool messageProcessed = PumpMessages();
-    if (messageProcessed)
+    if (!IsForeground())
     {
+        os::msleep(100);
         return true;
     }
-    std::chrono::milliseconds nextTimer;
+
+    while (true)
     {
-        if (quit)
+        bool messageProcessed = PumpMessages();
+        if (messageProcessed)
         {
-            return messageProcessed;
+            return true;
         }
-        std::unique_lock lock{pumpMessageMutex};
-        if (GetNextTimer(&nextTimer))
+        if (waitForTimers)
         {
-            {
-                TimeMs delay = nextTimer - Now();
-                if (delay < 1ms)
-                    delay = 1ms;
-                this->pumpMessageConditionVariable.wait_for(lock, nextTimer - Now());
-            }
-            lock.unlock();
+            PumpMessageWaitOne();
             return PumpMessages();
         }
+        else
+        {
+            return false;
+        }
     }
-    return false;
 }
 bool CoDispatcher::PumpMessages()
 {
     if (!IsForeground())
     {
-        throw std::invalid_argument("Can't pump on a background thread.");
+        os::msleep(100);
+        return true;
     }
 
     bool processedAny = false;
@@ -460,7 +484,8 @@ CoDispatcher *CoDispatcher::CreateMainDispatcher()
         throw std::logic_error("Operation performed on a non-dispatcher thread.");
     }
     hasMainDispatcher = true;
-    return new CoDispatcher();
+
+    return gForegroundDispatcher = new CoDispatcher();
 }
 
 void CoDispatcher::DestroyDispatcher()
@@ -472,6 +497,7 @@ void CoDispatcher::DestroyDispatcher()
         {
             throw std::invalid_argument("Can only destroy the foreground dispatcher.");
         }
+        gForegroundDispatcher = nullptr;
         pInstance = nullptr;
         delete p;
         hasMainDispatcher = false;
@@ -502,40 +528,80 @@ size_t CoDispatcher::Instrumentation::GetNumberOfDeadThreads()
 
 void CoDispatcher::PumpMessageNotifyOne()
 {
-    std::lock_guard lock{pumpMessageMutex};
-    pumpMessageConditionVariable.notify_one();
+    {
+        std::lock_guard lock{pumpMessageMutex};
+        // cout << "notify" << endl;
+        this->messagePosted = true;
+        pumpMessageConditionVariable.notify_one();
+    }
 }
 
 void CoDispatcher::PumpMessageWaitOne()
 {
-    std::unique_lock lock{pumpMessageMutex};
-    pumpMessageConditionVariable.wait_for(lock, 1000ms);
+    while (true)
+    {
+        std::unique_lock lock{pumpMessageMutex};
+        if (this->messagePosted)
+        {
+            this->messagePosted = false;
+            return;
+        }
+        std::chrono::milliseconds nextTimer;
+        if (this->GetNextTimer(&nextTimer))
+        {
+            auto delay = nextTimer - Now();
+            if (delay.count() < 0)
+            {
+                return;
+            }
+            if (delay.count() == 0)
+            {
+                delay = 1ms;
+            }
+            pumpMessageConditionVariable.wait_for(lock, delay);
+            return;
+        }
+        else
+        {
+            pumpMessageConditionVariable.wait_for(lock, 1000ms);
+            return;
+        }
+    }
 }
 
 int scavengeTaskCounter = 0;
 void CoDispatcher::ScavengeTasks()
 {
-    for (auto i = coroutineThreads.begin(); i != coroutineThreads.end(); /**/)
+    while (true)
     {
-
-        if (i->handle.done())
+        bool removedOne = false;
+        for (auto i = coroutineThreads.begin(); i != coroutineThreads.end(); /**/)
         {
-            try
-            {
 
-                i->GetResult();
-            }
-            catch (const std::exception &e)
+            if (i->handle.done())
             {
-                Log().Error(SS("Coroutine Thread exited abnormally. (" << e.what() << ")"));
-                std::terminate();
+                CoTask<> t = std::move(*i);
+                i = coroutineThreads.erase(i);
+                try
+                {
+
+                    t.GetResult();
+                    removedOne = true;
+                    break;
+                }
+                catch (const std::exception &e)
+                {
+                    Log().Error(SS("Coroutine Thread exited abnormally. (" << e.what() << ")"));
+                    std::terminate();
+                }
             }
-            i = coroutineThreads.erase(i);
+            else
+            {
+                ++i;
+            }
         }
-        else
-        {
-            ++i;
-        }
+        if (!removedOne)
+            break;
     }
 }
 
@@ -561,5 +627,17 @@ void CoDispatcher::RemoveThreadDispatcher()
     {
         delete pInstance;
         pInstance = nullptr;
+    }
+}
+
+void cotask::Terminate(const std::string &message)
+{
+    try
+    {
+        throw logic_error(message);
+    }
+    catch (const std::logic_error &)
+    {
+        std::terminate();
     }
 }

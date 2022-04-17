@@ -55,8 +55,9 @@ using namespace p2p::detail;
 #endif
 
 using namespace p2p;
-using namespace detail;
+using namespace p2p::detail;
 
+const std::chrono::milliseconds DEFAULT_TIMEOUT = 600000ms;
 namespace p2p::detail
 {
 
@@ -75,7 +76,6 @@ namespace p2p::detail
         char *remote_ip;
 #endif /* CONFIG_CTRL_IFACE_UDP */
 #ifdef CONFIG_CTRL_IFACE_UNIX
-        int s;
         struct sockaddr_un local;
         struct sockaddr_un dest;
 #endif /* CONFIG_CTRL_IFACE_UNIX */
@@ -109,10 +109,6 @@ WpaCtrl::~WpaCtrl()
 {
     if (ctrl != nullptr)
     {
-        if (ctrl->s != 1)
-        {
-            close(ctrl->s);
-        }
         delete ctrl;
         ctrl = nullptr;
     }
@@ -120,12 +116,15 @@ WpaCtrl::~WpaCtrl()
 
 static std::atomic<uint64_t> instanceId;
 
+static filesystem::path WPA_CONTROL_SOCKET_DIR {"/var/run/wpa_supplicant"};
+
 void WpaCtrl::Open(const std::string &socketName)
 {
-    Open(socketName, nullptr);
+    Open(WPA_CONTROL_SOCKET_DIR / socketName, nullptr);
 }
 void WpaCtrl::Open(const std::string& socketName, const char*tempFilePath)
 {
+    this->socketName = socketName;
     if (tempFilePath != nullptr && tempFilePath[0] != '/')
     {
         throw invalid_argument("tempFileDirectory must start with '/'");
@@ -179,7 +178,7 @@ try_again:
 	 * no-deference-symlinks version to avoid races. */
     fchmod(s, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 #endif /* ANDROID */
-    if (bind(ctrl->s, (struct sockaddr *)&ctrl->local,
+    if (bind(s, (struct sockaddr *)&ctrl->local,
              sizeof(ctrl->local)) < 0)
     {
         if (errno == EADDRINUSE && tries < 2)
@@ -245,7 +244,7 @@ try_again:
     }
 #endif /* ANDROID */
 
-    if (socketName.length() >= sizeof(ctrl->dest.sun_family)-1)
+    if (socketName.length() >= sizeof(ctrl->dest.sun_path)-1)
     {
         throw invalid_argument("Socket name too long: " + socketName);
     }
@@ -283,18 +282,21 @@ void WpaCtrl::Close()
 }
 
 
-CoTask<int>  WpaCtrl::CtrlRequest(const char *cmd, size_t cmd_len,
-		     char *reply, size_t *reply_len)
+CoTask<size_t>  WpaCtrl::CoRequest(const char *cmd, size_t cmd_len,
+		     char *reply, size_t reply_buffer_length)
 {
     
-    CoLockGuard lock;
-    co_await lock.CoLock(requestMutex);
 
-    co_await coFile.CoSend(cmd,cmd_len);
+    try {
+        co_await coFile.CoSend(cmd,cmd_len,DEFAULT_TIMEOUT); // the datagram interface doesn't want the final '\n'. (Maybe other interfaces do)
+    } catch (const CoTimedOutException& e)
+    {
+        throw ;
+    }
 
 
     while (true) {
-        size_t received = co_await coFile.CoRecv(reply,*reply_len);
+        size_t received = co_await coFile.CoRecv(reply,reply_buffer_length,DEFAULT_TIMEOUT);
         reply[received] = '\0'; // always zero-terminate.
         if ((received > 0 && reply[0] == '<')  
         || (received > 6 && strncmp(reply,"IFNAME=",7) == 0))
@@ -313,6 +315,65 @@ CoTask<int>  WpaCtrl::CtrlRequest(const char *cmd, size_t cmd_len,
             }
         } else{
             co_return received;
+        }
+    }
+}
+
+CoTask<> WpaCtrl::Attach() {
+    // UNLIKE all other messages, ATTACH and DETACH don't have a trailing \n.!
+    try {
+        co_await AttachHelper("ATTACH");
+    } catch (const CoTimedOutException &e)
+    {
+        throw CoIoException(EBADF,SS("Timed out ATTACHing to " << this->socketName));
+    }
+}
+CoTask<> WpaCtrl::Detach() {
+    // UNLIKE all other messages, ATTACH and DETACH don't have a trailing \n.!
+    try {
+        co_await AttachHelper("DETACH");
+    } catch (const CoTimedOutException &e)
+    {
+        throw CoIoException(EBADF,SS("Timed out DETACHing from " << this->socketName));
+    }
+
+}
+
+CoTask<> WpaCtrl::AttachHelper(const std::string&cmd) {
+
+    co_await coFile.CoSend(cmd.c_str(),cmd.length(),DEFAULT_TIMEOUT); // the datagram interface doesn't want the final '\n'. (Maybe other interfaces do)
+
+    char reply[512];
+
+    while (true) {
+        size_t received = co_await coFile.CoRecv(reply,sizeof(reply),DEFAULT_TIMEOUT);
+        if (received == 0)
+        {
+            throw CoIoClosedException();
+        }
+        reply[received] = '\0'; // always zero-terminate.
+        if ((received > 0 && reply[0] == '<')  
+        || (received > 6 && strncmp(reply,"IFNAME=",7) == 0))
+        {
+            // if (msg_cb)
+            // {
+            //     // Not really implemented. You need to use CoTask scheduling to service sockets.
+            //     msg_cb(reply,received);
+            // } else
+            {
+                // Expected scenarios: 
+                // 1) Requests on one instance of WpaCtrl; events on another.
+                // 2) Requests only, no events.
+                // Explicitly not supported: trying to do both on the same channel. 
+                throw logic_error("Received event message on a request socket. (Use one instance of WpaCtrl to request, and a second to service events)");
+            }
+        } else{
+            reply[received] = 0;
+            if (strcmp(reply,"OK\n") == 0)
+            {
+                co_return;
+            }
+            throw WpaIoException(EBADMSG,SS(cmd << " failed. (" << reply << ")"));
         }
     }
 }

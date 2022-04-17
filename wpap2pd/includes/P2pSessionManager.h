@@ -2,6 +2,8 @@
 
 #include "WpaSupplicant.h"
 #include "P2pGroup.h"
+#include <unordered_map>
+#include "DnsMasqProcess.h"
 
 namespace p2p
 {
@@ -36,6 +38,8 @@ namespace p2p
         uint8_t go_intent;
     };
 
+    class P2pGroup;
+
     class P2pSessionManager : public WpaSupplicant
     {
     public:
@@ -45,38 +49,56 @@ namespace p2p
 
         virtual void SetLog(std::shared_ptr<ILog> log);
         CoTask<> Open(const std::string &interfaceName);
-        bool IsComplete() { return isComplete; }
+        
     protected:
-        void SetComplete() {
-            isComplete = true;
-        }
-        virtual void InitWpaConfig();
-        virtual void SetUpPersistentGroup();
-        virtual void OnEvent(const WpaEvent &event);
+
+        struct  EnrollmentRecord {
+            bool active = false;
+            bool pbc = false;
+            std::string pin;
+            std::string deviceId;
+
+        };
+        EnrollmentRecord enrollmentRecord;
+        std::mutex mxEnrollmentRecord;
+
+        virtual CoTask<> InitWpaConfig();
+        virtual CoTask<>  SetUpPersistentGroup();
+        virtual CoTask<> OnEvent(const WpaEvent &event);
         virtual CoTask<> CoOnInit();
         virtual CoTask<> CoOnUnInit();
-        virtual void OnDevicesChanged() {}
-        virtual void MaybeEnableNetwork(const std::vector<WpaNetworkInfo> &networks);
+        virtual CoTask<> MaybeEnableNetwork(const std::vector<WpaNetworkInfo> &networks);
+        virtual CoTask<> AttachDnsMasq();
+        virtual CoTask<> OnEndOfEnrollment(bool hasStations) { co_return; }
 
         // P2p event handlers.
-        virtual void OnP2pGoNegRequest(const P2pGoNegRequest &request);
-        virtual void OnProvDiscShowPin(const WpaEvent &event);
-        void OnProvDiscPbcReq(const WpaEvent &event);
+        virtual CoTask<> OnP2pGoNegRequest(const P2pGoNegRequest &request);
+        virtual CoTask<> OnProvDiscShowPin(const WpaEvent &event);
+        CoTask<> OnProvDiscPbcReq(const WpaEvent &event);
 
-        std::unique_ptr<P2pGroup> OnGroupStarted(const P2pGroupInfo &groupInfo);
-        void OnGroupRemoved(const WpaEvent&event);
-        void SetP2pProperty(const std::string &name, const std::string &value);
+        CoTask<> OnGroupStarted(const P2pGroupInfo &groupInfo);
+        CoTask<> OnGroupRemoved(const WpaEvent&event);
+        CoTask<> SetP2pProperty(const std::string &name, const std::string &value);
 
     private:
-        bool isComplete = false;
-        void StartServiceDiscovery();
-        void StopServiceDiscovery();
-        CoTask<> KeepAliveProc();
+        CoTask<> CloseGroup(P2pGroup *group);
+        CoTask<> EndEnrollment();
+        CoTask<> UpdateStationCount();
+        std::string interfaceName;
+        DnsMasqProcess dnsMasqProcess;
+        CoTask<> CreateP2pGroup(const std::string &interfaceName);
+        friend class P2pGroup;
+        
+        uint32_t connectedStations = 0;
+        
+        CoTask<> RemoveExistingGroups();
+        
+        CoTask<> StartServiceDiscovery();
+        CoTask<> StopServiceDiscovery();
         CoTask<> ScanProc();
 
-        void PreAuthorize();
-        virtual void OpenChannel(const std::string &interfaceName,bool withEvents);
-        int FindNetwork();
+        virtual CoTask<> OpenChannel(const std::string &interfaceName,bool withEvents);
+        CoTask<int> FindNetwork();
         int networkId;
         std::string networkBsid;
         std::vector<std::unique_ptr<P2pGroup>> activeGroups;
@@ -89,9 +111,11 @@ namespace p2p
         bool wpaConfigChanged = false;
         std::list<P2pDeviceInfo> devices;
         int myNetwork = -1;
+
+        std::unordered_map<std::string,std::string> bsidToNameMap;
         std::vector<WpaNetworkInfo> networks;
-        void OnDeviceFound(P2pDeviceInfo &&device);
-        void OnDeviceLost(std::string p2p_dev_addr);
+        CoTask<> OnDeviceFound(P2pDeviceInfo &&device); 
+        CoTask<> OnDeviceLost(std::string p2p_dev_addr);
         std::vector<WpaScanInfo> scanResults;
     };
 }

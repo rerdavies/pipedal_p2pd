@@ -5,6 +5,7 @@
 #include <functional>
 #include <exception>
 #include "CoTask.h"
+#include <sstream>
 
 namespace cotask
 {
@@ -191,7 +192,7 @@ has been given.
 
 ***********************************************/
 
-    enum ServiceState
+    enum class ServiceState
     {
         Idle,
         Executing,
@@ -282,9 +283,9 @@ has been given.
 
         void throwInvalidState(const char *action)
         {
-            std::cout << "ERROR: CoService Not in a valid state. (" << action << "," << ((int)serviceState) << ")" << std::endl;
-            cout.flush();
-            std::terminate();
+            std::stringstream s;
+            s << "ERROR: CoService Not in a valid state. (" << action << "," << ((int)serviceState) << ")";
+            Terminate(s.str());
         }
 
         void OnRequestTimeout(std::chrono::milliseconds timeout)
@@ -316,7 +317,7 @@ has been given.
         {
             if (!timeoutRequested)
                 return true;
-            bool cancelled = CoDispatcher::CurrentDispatcher().CancelDelayedFunction(timerHandle);
+            bool cancelled = CoDispatcher::ForegroundDispatcher().CancelDelayedFunction(timerHandle);
             timeoutRequested = false;
             timerHandle = 0;
             return cancelled;
@@ -398,7 +399,7 @@ has been given.
             switch (serviceState)
             {
             case ServiceState::Executing:
-                serviceState = Executed;
+                serviceState = ServiceState::Executed;
                 break;
             case ServiceState::ExecutingTimedOut:
             {
@@ -594,6 +595,7 @@ has been given.
         }
         void SetException(std::exception_ptr exceptionPtr);
 
+
         bool await_ready() const noexcept { return false; }
 
     protected:
@@ -619,6 +621,7 @@ has been given.
             CoServiceBase<SERVICE_IMPLEMENTATION>::OnRequestTimeout(timeout);
         }
         void SetException(std::exception_ptr exceptionPtr);
+
 
         bool await_ready() const noexcept { return false; }
 
@@ -653,6 +656,8 @@ has been given.
         this->CoServiceBase<SERVICE_IMPLEMENTATION>::hasError = true;
         CoServiceBase<SERVICE_IMPLEMENTATION>::OnResume();
     }
+
+
     template <IsVoidCoServiceImplementation SERVICE_IMPLEMENTATION>
     void CoService<SERVICE_IMPLEMENTATION>::SetException(std::exception_ptr exceptionPtr)
     {

@@ -1,0 +1,56 @@
+
+/etc/dnsmasq.d/pipedal.conf:
+--
+# interface p2p-wlan0-* 
+listen-address=172.24.0.1
+    dhcp-range=172.24.0.3,172.24.0.127,1h
+    domain=local
+    address=/pipedal.local/172.22.0.1
+    no-resolve
+    
+
+
+DNS-SD advertising:
+
+avahi-publish -s PiPedal  _pipedal._tcp 80 id=0a6045b0-1753-4104-b3e4-b9713b9cc356
+
+network dhcpcd
+
+rpi ~# cat > /etc/systemd/network/12-p2p-wlan0.network <<EOF
+[Match]
+Name=p2p-wlan0-*
+[Network]
+Address=192.168.4.1/24
+DHCPServer=yes
+EOF
+-------------
+dhcpcd.conf:
+
+#interface wlan0
+#static ip_address=192.168.0.10/24
+
+interface p2p-wlan0-0
+static ip_address=172.24.0.1/16
+
+denyinterfaces eth0
+denyinterfaces wlan0
+
+/etc/dnsmasq.conf:
+
+interface=p2p-wlan0-0
+    dhcp-range=172.24.0.3,172.24.127.127,3h
+
+
+
+Add to dhcpcd.conf:
+
+
+interface p2p-wlan0-*
+   static ip_address=172.27.0.1/24
+   nohook wpa_supplicant
+
+
+wpa_spplicant.conf
+: write full network, including bssid!
+
+
