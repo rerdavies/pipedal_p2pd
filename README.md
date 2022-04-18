@@ -2,32 +2,30 @@
 
 Provides P2P (WiFi Direct) session management for wpa_supplicant, as used in the PiPedal project.
 
+For support, please go to the [PiPedal Project](http://github.com//rerdavies/pipedal) page.
+
+Built as a submodule in the PiPedal Project Build.
+
 
 ## Borrowing Code 
 
 The project is currently fairly tightly coupled to PiPedal. The current implementation addresses PiPedal's needs adequately; but there's functionality 
 missing for a general-purpose library.
 
-Not currently suitable for general use; but what's here can be easily leveraged your own purposes. If you branch, please rename the executables and libaries
-so you don't take down my projects. There's a good chance this code will go on to become a properly componentized library.
-
 If there's interest, I could be convinced to speed up the development of a full component library. (nudge nudge sponsor sponsor. ;-P ). But that's fairly
 far down my list of personal priorities.
 
-Pull requests are welcome. Support is pretty much as-is, for now.
+Please rename binaries and libraries if you fork the code. Not doing so will break your installs and mine. And there's a good chance that some or all of this code will get upgraded to a more generally usable component.
+
+## State of the Code.
+
 
 What's provided:
 
 - P2P (WiFi Direct) session management for autonomous groups (no GO negotiation), with LABEL authentication only. (i.e. a fixed pin that would be 
-   printed on a label attached to the bottom of the device). 
-
- - There is code for a "none" authenticantion mode (PBC always on) -- which could be used 
-   while doing initial onboarding for an IoT device -- not recommended due to a a plethora of security issues. 
-
-- Allows robust successful connections from Android devices. 
-
-- Provides WiFi Direct UPNP service discovery for PiPedal.
-
+   printed on a label attached to the bottom of the device).
+   
+- Fast reliable pairing with Android devices.
 
 - Runs on the dhcpcd network stack used by Raspberry Pi OS.
 
@@ -36,27 +34,20 @@ What's provided:
 
 What's not provided:
 
--   Proper keypad, display, pbc authentication, which requires UI support on the host device to display pins (keypad) enter pins (display), 
-    and push -buttons (pbc).   This requires -- at a minimum -- a socket service that allows UI components to interact with the service.
-    And probably a user interface as well. (Control socket: easy; session management extensions: some easy debugging left; UI: need help with that).
+-   Proper keypad, display, pbc authentication. (Needs a control socket to interact with UI).
+ 
+-   Provides P2P UPNP service discovery. Needs P2P DNS-SD service discovery.
 
--   A possibility that "keypad" and "display" authentication options are a bottomless rabbithole. wap_supplicant appears to use BSID's instead of device GUIDs
-    for caching re-authentication credetials, which may break Android fast re-connect feature. Fixable, but dire.
+-   Support for more than one running autonomous Group is designed-in, but incomplete (Raspberry Pi can only run one GO anyway).
+ 
+-   Testing and configuration for newtworkd-based network stacks.
+-   
+-   Automonous GO only.
 
--   More general WiFi Direct upnp service discovery; and WiFi Direct DNS-SD discovery as well. (Easy)
-
--   Support for more than one running autonomous Group is designed-in, but missing code in a few places. Raspberry PI devices only allows one GO, so it's untestable
-    unless the package gets ported to a more fully functional platform. (Easy with appropriate test device).
+-   Testing on fully-compliant C++20 compilers coroutine implementation. (Raspberry Pi OS only supports G++10.2).
     
--   Testing and configuration for newtworkd-based network stacks. Android requires working DHCP servers on the P2P GO ports. Mostly this is just a matter of 
-    ensuring that p2p group network get assigned a non-default IPv4 address, which is easy on networkd stacks.  (Easy).
+-   Switch the coroutine library over to iouring libarary in order to get asynchronous file i/o as well.
 
--   Absolutely no support for GO negotation. The current implementation is for an Autonomous GO, running on the local device, only.
-
--   Switch the coroutine library over to ioring libarary in order to get asynchronous file i/o as well.
-
--   Testing on fully-compliant C++20 compilers coroutine implementation. (Currently runs on G++10.2). Medium -- because Raspberry pi doesn't support 
-    G++11+ toochains yet. So, a complete port to Ubuntu (along with the implementation of networkd support) is required.
 
 
 ## Build Procedure.
