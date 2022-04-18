@@ -32,7 +32,7 @@ endif()
 # Include sub-projects.
 add_subdirectory("lib")
 add_subdirectory("doxygen")
-add_subdirectory("wpap2pd")
+add_subdirectory("pipedal_p2pd")
 
 
 #set(CPACK_GENERATOR "DEB")

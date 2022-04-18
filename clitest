@@ -1,1 +1,1 @@
-build/wpap2pd/wpap2pd  --trace-messages --log debug
+build/pipedal_p2pd/pipedal_p2pd  --trace-messages --log debug

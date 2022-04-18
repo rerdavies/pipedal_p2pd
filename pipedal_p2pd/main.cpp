@@ -1,3 +1,28 @@
+/*
+ * MIT License
+ * 
+ * Copyright (c) 2022 Robin E. R. Davies
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is furnished to do
+ * so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+
 
 #include "cotask/CoTask.h"
 #include "includes/P2pSessionManager.h"
@@ -44,11 +69,11 @@ static void printHelp()
 {
     PrettyPrinter p;
 
-    p << "wpap2pd v1.0\n"
+    p << "pipedal_p2pd v1.0 - P2P (WiFi Direct) session management for PiPedal\n"
       << "Copyright 2022 Robin E. R. Davies.\n"
       << "\n"
       << "Usage:\n";
-    p << "\twpap2pd [options]*\n\n";
+    p << "\tpipedal_p2pd [options]*\n\n";
     p << "Options:\n";
 
     p.Indent(20);
@@ -75,13 +100,13 @@ static void printHelp()
     p.Indent(4);
     p.Hang("Remarks:");
 
-    p << "wpap2pd provides session management for Wifi p2p (Wifi Direct) connections when "
+    p << "pipedal_p2pd provides session management for Wifi p2p (Wifi Direct) connections when "
          "using wpa_supplicant.\n\n";
 
     p.Indent(4);
     p.Hang("Example:");
 
-    p << "wpap2pd -c /etc/wpap2pd.conf -i wlan1\n\n";
+    p << "pipedal_p2pd_p2pd -c /etc/pipedal_p2pd.conf -i wlan1\n\n";
 
     p.Indent(4);
     p.Hang("Configuration file format:");
@@ -162,7 +187,7 @@ static void printHelp()
            "service_guid_file=FILENAME");
     p << "Name of a file containing the device-specific GUID used to indentify the current device. File syntax: Syntax: 0a6045b0-1753-4104-b3e4-b9713b9cc356\\n\n\n";
     p << "Usually, this will match an avahi DNS-SD service TXT record used to find services on the device once connected. "
-         "wpap2pd does not publish a DNS-SD service record.\n\n";
+         "pipedal_p2pd does not publish a DNS-SD service record.\n\n";
 
     p.Hang("\t"
            "service_guid=UUID");
@@ -247,7 +272,14 @@ CoTask<int> CoMain(int argc, const char *const *argv)
     }
     signal_abort = 0; // signals cancel instead of aborting.
 
-    std::shared_ptr<ILog> log = std::make_shared<ConsoleLog>();
+    std::shared_ptr<ILog> log;
+    if (systemd)
+    {
+        log = std::make_shared<SystemdLog>();
+
+    } else {
+        log = std::make_shared<ConsoleLog>();
+    }
 
     if (logLevel == "debug")
     {

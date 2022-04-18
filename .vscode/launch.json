@@ -73,7 +73,7 @@
             ]
         },
         {
-            "name": "(gdb) wpap2pd run",
+            "name": "(gdb) pipedal_p2pd run",
             "type": "cppdbg",
             "request": "launch",
             // Resolved by CMake Tools:
@@ -109,11 +109,11 @@
             ]
         },
         {
-            "name": "(gdb) wpap2pd -?",
+            "name": "(gdb) pipedal_p2pd -?",
             "type": "cppdbg",
             "request": "launch",
             // Resolved by CMake Tools:
-            "program": "${command:cmake.launchTargetDirectory}/wpap2pd",
+            "program": "${command:cmake.launchTargetDirectory}/pipedal_p2pd",
             "args": ["--print-config" ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
