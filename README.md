@@ -18,25 +18,27 @@ Pull requests are welcome. Support is pretty much as-is, for now.
 
 What's provided:
 
-   - P2P (WiFi Direct) session management for autonomous groups (no GO negotiation), with LABEL authentication only. (i.e. a fixed pin that would be 
-      printed on a label attached to the bottom of the device). 
+- P2P (WiFi Direct) session management for autonomous groups (no GO negotiation), with LABEL authentication only. (i.e. a fixed pin that would be 
+   printed on a label attached to the bottom of the device). 
 
-    - There is code for a "none" authenticantion mode (PBC always on) -- which could be used 
-      while doing initial onboarding for an IoT device -- not recommended due to a a plethora of security issues. 
+ - There is code for a "none" authenticantion mode (PBC always on) -- which could be used 
+   while doing initial onboarding for an IoT device -- not recommended due to a a plethora of security issues. 
 
-   - Allows robust successful connections from Android devices. 
+- Allows robust successful connections from Android devices. 
 
-   - Provides WiFi Direct UPNP service discovery for PiPedal.
+- Provides WiFi Direct UPNP service discovery for PiPedal.
 
 
-   - Runs on the dhcpcd network stack used by Raspberry Pi OS.
+- Runs on the dhcpcd network stack used by Raspberry Pi OS.
 
-   - libcotask -- a fairly effecient and interesting C++20 coroutine library providing  co-routine-based I/O on sockets (not yet for filesystem objects). Mostly documented through a doxygen build. It's bound for general release, but not there yet.
+- libcotask -- a fairly effecient and interesting C++20 coroutine library providing  co-routine-based I/O on sockets (not yet for filesystem objects). 
+ Mostly documented through a doxygen build. It's bound for general release, but not there yet.
 
 What's not provided:
 
--   Proper keypad, display, pbc authentication, which requires UI support on the host device to display pins (keypad) enter pins (display), and push -buttons (pbc).   This requires -- at a minimum -- a socket service that allows UI components to interact with the service. And probably a user interface as well.
-    (Control socket: easy; session management extensions: some easy debugging left; UI: need help with that).
+-   Proper keypad, display, pbc authentication, which requires UI support on the host device to display pins (keypad) enter pins (display), 
+    and push -buttons (pbc).   This requires -- at a minimum -- a socket service that allows UI components to interact with the service.
+    And probably a user interface as well. (Control socket: easy; session management extensions: some easy debugging left; UI: need help with that).
 
 -   A possibility that "keypad" and "display" authentication options are a bottomless rabbithole. wap_supplicant appears to use BSID's instead of device GUIDs
     for caching re-authentication credetials, which may break Android fast re-connect feature. Fixable, but dire.
