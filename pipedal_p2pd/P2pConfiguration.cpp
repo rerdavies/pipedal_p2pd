@@ -93,6 +93,8 @@ namespace p2p
         private:
             pointer_type pMember;
         };
+
+
         // string specializations.
         template <>
         void ConfigSerializer<std::string>::SetValue(P2pConfiguration &config, const std::string &value) const
@@ -103,6 +105,36 @@ namespace p2p
         const std::string ConfigSerializer<std::string>::GetValue(P2pConfiguration &config) const
         {
             return EncodeString(config.*pMember);
+        }
+        // bool specializations.
+        template <>
+        void ConfigSerializer<bool>::SetValue(P2pConfiguration &config, const std::string &value) const
+        {
+            bool result = false;
+            if (value == "")
+            {
+                result = false;
+            } else if (value == "true")
+            {
+                result = true;
+            } else if (value == "false")
+            {
+                result = false;
+            } else {
+                try {
+                    int t = ToInt<int>(value);
+                    result = (t != 0);
+                } catch (const std::exception &)
+                {
+                    throw invalid_argument("Expecting true or false.");
+                }
+            }
+            config.*pMember = result;
+        }
+        template <>
+        const std::string ConfigSerializer<bool>::GetValue(P2pConfiguration &config) const
+        {
+            return (config.*pMember) ? "true": "false";
         }
 
     }
@@ -143,14 +175,6 @@ p2p::static_vector<ConfigSerializerBase> configSerializers =
         SERIALIZER_ENTRY(service_guid,
                          "GUID identifying the PiPedal service\n"
                          "(if service_guid_file is not provided.)"),
-
-        SERIALIZER_ENTRY(command_socket_address,
-                         "Name of the socket on which to listen for display, keypad, pbc interactions (optional).");
-
-        SERIALIZER_ENTRY(command_socket_group,
-                         "The group used to permission the command socket (must belong to this group to read or write the socket.).");
-
-
 };
 
 /**

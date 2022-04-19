@@ -6,8 +6,6 @@ set(WPA_CTRL_PATH ../..//wpa_supplicant-2.10/src)
 
 add_executable(pipedal_p2pd 
     main.cpp
-    ${WPA_CTRL_PATH}/common/wpa_ctrl.c
-    ${WPA_CTRL_PATH}/utils/os_unix.c
 
     static_vector.h
     WpaCtrl.cpp includes/WpaCtrl.h

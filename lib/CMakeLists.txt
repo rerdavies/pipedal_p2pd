@@ -4,7 +4,7 @@ cmake_minimum_required (VERSION 3.9)
 
 include(CTest)
 
-add_library(cotask SHARED
+add_library(cotask STATIC
 
 ./cotask/Os.h
 ./cotask/CoService.h

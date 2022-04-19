@@ -61,7 +61,7 @@ namespace p2p
             column = 0;
         }
 
-        void Hang(const std::string &text)
+        void HangingIndent(const std::string &text)
         {
             for (char c : text)
             {
