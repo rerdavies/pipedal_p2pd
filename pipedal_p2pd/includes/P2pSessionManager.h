@@ -105,6 +105,7 @@ namespace p2p
         CoTask<> SetP2pProperty(const std::string &name, const std::string &value);
 
     private:
+        CoTask<> CleanUpNetworks();
         CoTask<> CloseGroup(P2pGroup *group);
         CoTask<> EndEnrollment();
         CoTask<> UpdateStationCount();
@@ -128,8 +129,8 @@ namespace p2p
         std::vector<std::unique_ptr<P2pGroup>> activeGroups;
 
         bool addingGroup = false;
-        WpaEventMessage sychronousMessageToWaitFor = WpaEventMessage::WPA_INVALID_MESSAGE;
-        void SynchronousWaitForMessage(WpaEventMessage message, std::chrono::milliseconds timeout);
+        WpaEventMessage synchronousEventToWaitFor = WpaEventMessage::WPA_INVALID_MESSAGE;
+        void SynchronousWaitForEvent(WpaEventMessage message, std::chrono::milliseconds timeout);
 
         int persistentGroup = -1;
         bool wpaConfigChanged = false;

@@ -137,7 +137,7 @@ namespace p2p
          * universal  failure pattern for wpa_supplicant requests).)
          * 
          * @throws WpaIoExcpetion if there's an i/o error on the channel, or if the response is not a single string.
-         * @throws WpaFailedException if throwIfFaield is true, and the reponse is "FAIL" or "INVALID COMMAND".
+         * @throws WpaFailedException if throwIfFailed is true, and the reponse is "FAIL" or "INVALID COMMAND".
          * @param request The response from wpa_supplication.
          * @return std::string 
          */

@@ -167,6 +167,10 @@ void WpaCtrl::Open(const std::string& socketName, const char*tempFilePath)
      int s = socket(PF_UNIX, SOCK_DGRAM, 0);
     const std::string tempFileName = SS("hp2p-" << getpid() << "-" << (instanceId++));
     auto clientPath = (localSocketDirectory / tempFileName).string();
+    if (clientPath.length() >= sizeof(ctrl->local.sun_path)-1 )
+    {
+        throw invalid_argument("Socket name too long: " + clientPath);
+    }
 
     auto socketCleanup = finally([&] () {
 
@@ -174,17 +178,11 @@ void WpaCtrl::Open(const std::string& socketName, const char*tempFilePath)
         {
             close(s);
             s = -1;
+            unlink(ctrl->local.sun_path);
         }
-        filesystem::remove(clientPath);
     });
 
     ctrl->local.sun_family = AF_UNIX;
-
-
-    if (clientPath.length() >= sizeof(ctrl->local.sun_path)-1 )
-    {
-        throw invalid_argument("Socket name too long: " + clientPath);
-    }
     memcpy(ctrl->local.sun_path,clientPath.c_str(),clientPath.length());
 
 try_again:
@@ -213,7 +211,7 @@ try_again:
              * abnormally, leaving the file in place. It must have been us, argues, wpa_ctrl.c,
              * So remove it it and try again.
 			 */
-            std::filesystem::remove(ctrl->local.sun_path);
+            unlink(ctrl->local.sun_path);
             goto try_again;
         }
         WpaIoException::ThrowErrno(); // throw an i/o exception.
@@ -302,7 +300,11 @@ try_again:
 }
 void WpaCtrl::Close()
 {
-    coFile.Close();
+    if (coFile.IsOpen())
+    {
+        coFile.Close();
+        unlink(ctrl->local.sun_path);
+    }
 }
 
 

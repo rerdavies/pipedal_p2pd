@@ -9,6 +9,7 @@ add_executable(pipedal_p2pd
 
     static_vector.h
     WpaCtrl.cpp includes/WpaCtrl.h
+    DeviceIdFile.cpp DeviceIdFile.hpp
 
     WpaEvent.cpp includes/WpaEvent.h
     WpaMessages.cpp includes/WpaMessages.h

@@ -61,7 +61,6 @@ protected:
 private:
     std::string RemovePin(const std::string &message)
     {
-        return message; // XXX DELETE ME!!!
         auto nPos = message.find(gP2pConfiguration.p2p_pin);
         if (nPos == std::string::npos)
             return message;
@@ -225,7 +224,10 @@ CoTask<> P2pSessionManager::OnEvent(const WpaEvent &event)
     {
         Log().Error(SS("Failed to process event. (" << e.what() << ") " << event.ToString()));
     }
-    this->sychronousMessageToWaitFor = WpaEventMessage::WPA_INVALID_MESSAGE;
+    if (this->synchronousEventToWaitFor == event.message)
+    {
+        this->synchronousEventToWaitFor = WpaEventMessage::WPA_INVALID_MESSAGE;
+    }
 }
 
 CoTask<> P2pSessionManager::CoOnUnInit()
@@ -234,6 +236,7 @@ CoTask<> P2pSessionManager::CoOnUnInit()
 
     co_await StopServiceDiscovery();
 
+#ifdef JUNK
     // Take snapshot of all active groups.
     std::vector<std::string> groups;
     for (auto &i : activeGroups)
@@ -245,14 +248,15 @@ CoTask<> P2pSessionManager::CoOnUnInit()
         co_await Request(SS("P2P_GROUP_REMOVE " << group << '\n'));
         try
         {
-            SynchronousWaitForMessage(WpaEventMessage::P2P_EVENT_GROUP_REMOVED, 10000ms);
+            SynchronousWaitForEvent(WpaEventMessage::P2P_EVENT_GROUP_REMOVED, 10000ms);
         }
         catch (const CoTimedOutException &)
         {
             Log().Warning(SS("Timed out removing group " << group));
         }
     }
-    activeGroups.resize(0);
+#endif
+    activeGroups.resize(0); // close the connections (but not the groups).
 
     co_await this->dnsMasqProcess.Stop();
 
@@ -261,6 +265,7 @@ CoTask<> P2pSessionManager::CoOnUnInit()
 CoTask<> P2pSessionManager::CoOnInit()
 {
     co_await base::CoOnInit();
+    co_await CleanUpNetworks();
     co_await InitWpaConfig();
 
     CoDispatcher::CurrentDispatcher().StartThread(KeepAliveProc());
@@ -355,10 +360,32 @@ CoTask<> P2pSessionManager::OnP2pGoNegRequest(const P2pGoNegRequest &request)
     co_return;
 }
 
+CoTask<> P2pSessionManager::CleanUpNetworks()
+{
+    auto networks = co_await ListNetworks();
+
+    std::string prefix = "DIRECT-";
+    std::string postfix = "-" + gP2pConfiguration.p2p_ssid_postfix;
+
+    for (auto&network: networks)
+    {
+        bool keep = false;
+        auto name = network.Ssid();
+        if (name.starts_with(prefix) && name.ends_with(postfix))
+        {
+            keep = true;
+        }
+        if (!keep)
+        {
+            co_await RequestOK(SS("REMOVE_NETWORK " << network.Id() << "\n"));
+        }
+    }
+}
+
 CoTask<> P2pSessionManager::InitWpaConfig()
 {
     co_await SetWpaProperty("device_name", (gP2pConfiguration.p2p_device_name));
-    //co_await SetWpaProperty("country", gP2pConfiguration.country_code);
+    co_await SetWpaProperty("country", gP2pConfiguration.country_code);
     bool t = this->wpaConfigChanged; // device_type always fails for unknown reasons. BUt it does get set.
     co_await SetWpaProperty("device_type", (gP2pConfiguration.p2p_device_type));
     this->wpaConfigChanged = t;
@@ -455,12 +482,13 @@ CoTask<> P2pSessionManager::RemoveExistingGroups()
             {
                 groupRemoved = true;
                 Log().Debug(SS("Removing P2p group " << interface));
+
                 co_await Request(SS("P2P_GROUP_REMOVE " << interface << '\n'));
                 // Succeeded!! Wait for P2P-GROUP-REMOVED message.
 
                 try
                 {
-                    SynchronousWaitForMessage(WpaEventMessage::P2P_EVENT_GROUP_REMOVED, 10000ms);
+                    SynchronousWaitForEvent(WpaEventMessage::P2P_EVENT_GROUP_REMOVED, 10000ms);
                 }
                 catch (const CoTimedOutException & /* ignored*/)
                 {
@@ -482,6 +510,7 @@ CoTask<> P2pSessionManager::RemoveExistingGroups()
 }
 CoTask<> P2pSessionManager::SetUpPersistentGroup()
 {
+    // Just recycle p2p-wlan0-0.
     // co_await RemoveExistingGroups();
 
     auto &config = gP2pConfiguration;
@@ -491,7 +520,7 @@ CoTask<> P2pSessionManager::SetUpPersistentGroup()
     std::vector<std::string> interfaces = co_await Request("INTERFACES\n");
     std::string interfaceName;
 
-    std::string groupPrefix = "p2p-" + config.wlanInterface;
+    std::string groupPrefix = "p2p-" + config.wlanInterface + "-0";
     for (const std::string &interface : interfaces)
     {
         if (interface.starts_with(groupPrefix))
@@ -500,6 +529,7 @@ CoTask<> P2pSessionManager::SetUpPersistentGroup()
             break;
         }
     }
+
     if (interfaceName != "")
     {
         co_await CreateP2pGroup(interfaceName);
@@ -524,8 +554,16 @@ CoTask<> P2pSessionManager::SetUpPersistentGroup()
             {
                 co_await RequestOK(SS("P2P_GROUP_ADD persistent freq=" << config.wifiGroupFrequency << ht40 << vht << he << "\n"));
             }
-            SynchronousWaitForMessage(WpaEventMessage::P2P_EVENT_GROUP_STARTED, 40000ms);
+            SynchronousWaitForEvent(WpaEventMessage::P2P_EVENT_GROUP_STARTED, 40000ms);
             Log().Debug(SS("Created persistent P2p Group."));
+
+            if (this->activeGroups.size() == 0)
+            {
+                std::string message = "Failed to create group p2p-"  + gP2pConfiguration.wlanInterface +"-0";
+                Log().Error(message);
+                Log().Error("Try 'sudo systemctl restart dhcpcd'.");
+                throw logic_error("Failed to create group interface.");
+            }
 
             this->addingGroup = false;
         }
@@ -559,11 +597,11 @@ CoTask<> P2pSessionManager::SetUpPersistentGroup()
     Log().Info("Ready");
 }
 
-void P2pSessionManager::SynchronousWaitForMessage(WpaEventMessage message, std::chrono::milliseconds timeout)
+void P2pSessionManager::SynchronousWaitForEvent(WpaEventMessage message, std::chrono::milliseconds timeout)
 {
     auto &dispatcher = CoDispatcher::CurrentDispatcher();
     auto endTime = dispatcher.Now() + timeout;
-    this->sychronousMessageToWaitFor = message;
+    this->synchronousEventToWaitFor = message;
 
     while (true)
     {
@@ -573,7 +611,7 @@ void P2pSessionManager::SynchronousWaitForMessage(WpaEventMessage message, std::
             throw CoTimedOutException();
         }
         dispatcher.PumpMessages(delay);
-        if (this->sychronousMessageToWaitFor != message)
+        if (this->synchronousEventToWaitFor != message)
         {
             break;
         }
@@ -629,6 +667,13 @@ CoTask<> P2pSessionManager::AttachDnsMasq()
 CoTask<> P2pSessionManager::OnGroupStarted(
     const P2pGroupInfo &groupInfo)
 {
+
+    std::string desiredInterface = "p2p-" + gP2pConfiguration.wlanInterface + "-0";
+    if (groupInfo.interface != desiredInterface)
+    {
+        Log().Error("Unexpected interface added. (Expecting "+ desiredInterface+ "; got " + groupInfo.interface+ ")");
+        co_return;
+    }
     // this->activeGroup = std::make_unique<P2pGroupInfo>(event);
     co_await CreateP2pGroup(groupInfo.interface);
 

@@ -46,7 +46,7 @@ namespace p2p
         PrettyPrinter()
             : s(std::cout)
         {
-            lineBuffer.resize(lineWidth * 2);
+            lineBuffer.reserve(120);
         }
 
         void Indent(size_t indent)

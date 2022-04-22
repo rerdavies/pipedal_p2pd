@@ -23,6 +23,7 @@
  */
 
 #include "includes/P2pConfiguration.h"
+#include "DeviceIdFile.hpp"
 #include "cotask/Os.h"
 #include "sstream"
 #include <concepts>
@@ -170,8 +171,9 @@ p2p::static_vector<ConfigSerializerBase> configSerializers =
         SERIALIZER_ENTRY(p2p_go_he, ""),
         SERIALIZER_ENTRY(p2p_ip_address, "Ipv4 address for the P2P group interface"),
         SERIALIZER_ENTRY(service_guid_file,
-                         "File containing the a globally-unique id identifying the service on this machine.\n"
-                         "Syntax: 0a6045b0-1753-4104-b3e4-b9713b9cc356\n"),
+                    "# File containing the globally-unique id that identifies the service on this machine\n"
+                    " in this format: 0a6045b0-1753-4104-b3e4-b9713b9cc356"
+        ),
         SERIALIZER_ENTRY(service_guid,
                          "GUID identifying the PiPedal service\n"
                          "(if service_guid_file is not provided.)"),
@@ -273,9 +275,9 @@ static std::string trim(const std::string &v)
 {
     size_t start = v.find_first_not_of(' ');
     size_t end = v.find_last_not_of(' ');
-    if (start >= end)
+    if (start >= end+1)
         return "";
-    return v.substr(start, end - start);
+    return v.substr(start, end+1 - start);
 }
 
 void P2pConfiguration::Load(const std::filesystem::path &path)
@@ -288,7 +290,7 @@ void P2pConfiguration::Load(const std::filesystem::path &path)
     }
 
     std::ifstream f{path};
-    if (f.is_open())
+    if (!f.is_open())
     {
         throw std::invalid_argument("Can't open file " + path.string());
     }
@@ -307,16 +309,21 @@ void P2pConfiguration::Load(const std::filesystem::path &path)
         {
             line = line.substr(0, npos);
         }
-        size_t start = line.find_first_of(' ');
+        size_t start = 0;
+        while (start < line.size() && line[start] == ' ')
+        {
+            ++start;
+        }
         if (start == line.size())
         {
             continue;
         }
+
         auto pos = line.find_first_of('=', start);
         if (pos == std::string::npos)
         {
             std::string message = SS(
-                "Error " << path.string() << "(" << line << ',' << (pos + 1) << "): Syntax error. Expecting '='.");
+                "Error " << path.string() << "(" << nLine << "," << (start + 1) << "): Syntax error. Expecting '='.");
             throw logic_error(message);
         }
         string label = trim(line.substr(start, pos - start));
@@ -333,13 +340,28 @@ void P2pConfiguration::Load(const std::filesystem::path &path)
             {
                 std::string message =
                     SS(
-                        "Error " << path.string() << "(" << line << ',' << (pos + 1) << "): " << e.what());
+                        "Error " << path.string() << "(" << nLine << ',' << (pos + 1) << "): " << e.what());
                 throw logic_error(message);
             }
+        } else {
+            throw logic_error(
+                SS (
+                    "Error " << path.string() << "(" << nLine << ',' << (start) << "): " << "Invalid property: " + label )
+            );
         }
     }
-    if (MakeUuid())
+    if (this->service_guid_file != "")
     {
-        Save(path);
+        pipedal::DeviceIdFile deviceIdFile;
+        deviceIdFile.Load();
+
+        this->service_guid = deviceIdFile.uuid;
+        this->p2p_device_name = deviceIdFile.deviceName;
+        this->p2p_ssid_postfix = deviceIdFile.deviceName;
+    } else {
+        if (MakeUuid())
+        {
+            Save(path);
+        }
     }
 }

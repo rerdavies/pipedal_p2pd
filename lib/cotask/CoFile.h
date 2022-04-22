@@ -106,6 +106,13 @@ namespace cotask {
         int Detach();
 
         /**
+         * @brief Is the file open?
+         * 
+         * @return true if the file is open.
+         * @return false  if the file is closed.
+         */
+        bool IsOpen() const { return this->file_fd != -1; }
+        /**
          * @brief Read a buffer of data.
          * 
          * @param data The buffer into which to read.

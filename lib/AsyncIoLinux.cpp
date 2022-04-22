@@ -73,6 +73,7 @@ public:
     }
     ~AsyncIoLinux()
     {
+        ssource.request_stop();
         thread = nullptr; // delete and join the thread.
         AsyncIo::instance = nullptr;
     }
@@ -87,6 +88,7 @@ public:
     }
     virtual void Stop()
     {
+        ssource.request_stop();
         thread = nullptr;
     }
 
