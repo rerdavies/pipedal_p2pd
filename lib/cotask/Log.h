@@ -180,22 +180,22 @@ namespace cotask
         virtual void OnDebug(const std::string &message)
         {
             std::lock_guard lock {mutex_};
-            syslog(LOG_DEBUG, message.c_str());
+            syslog(LOG_DEBUG, "%s", message.c_str());
         }
         virtual void OnInfo(const std::string &message)
         {
             std::lock_guard lock {mutex_};
-            syslog(LOG_NOTICE, message.c_str());
+            syslog(LOG_NOTICE, "%s",message.c_str());
         }
         virtual void OnWarning(const std::string &message) 
         {
             std::lock_guard lock {mutex_};
-            syslog(LOG_WARNING, message.c_str());
+            syslog(LOG_WARNING, "%s",message.c_str());
         }
         virtual void OnError(const std::string &message) 
         {
             std::lock_guard lock {mutex_};
-            syslog(LOG_ERR, message.c_str());
+            syslog(LOG_ERR, "%s",message.c_str());
         }
  
     };
