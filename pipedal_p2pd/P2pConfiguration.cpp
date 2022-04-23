@@ -157,7 +157,8 @@ p2p::static_vector<ConfigSerializerBase> configSerializers =
         SERIALIZER_ENTRY(p2p_device_name, "Name that appears when you connect."),
         SERIALIZER_ENTRY(p2p_ssid_postfix, "DIRECT-XX-postfix (appears on Android p2p Group names)"),
         SERIALIZER_ENTRY(wifiGroupFrequency, "Wifi frequency (kHz).\nShould almost always be  2412 (ch1),2437 (ch6), or 2462 (ch11)."),
-
+        SERIALIZER_ENTRY(wifiChannel,"Ui use only. wifiGroupFrequency is authoritative"),
+        SERIALIZER_ENTRY(enabled,"Ui use only. Service state is authoritative"),
         SERIALIZER_ENTRY(p2p_model_name, "P2P Device info"),
         SERIALIZER_ENTRY(p2p_model_number, ""),
         SERIALIZER_ENTRY(p2p_manufacturer, ""),
@@ -169,7 +170,6 @@ p2p::static_vector<ConfigSerializerBase> configSerializers =
         SERIALIZER_ENTRY(p2p_go_ht40, ""),
         SERIALIZER_ENTRY(p2p_go_vht, ""),
         SERIALIZER_ENTRY(p2p_go_he, ""),
-        SERIALIZER_ENTRY(p2p_ip_address, "Ipv4 address for the P2P group interface"),
         SERIALIZER_ENTRY(service_guid_file,
                     "# File containing the globally-unique id that identifies the service on this machine\n"
                     " in this format: 0a6045b0-1753-4104-b3e4-b9713b9cc356"

@@ -52,6 +52,10 @@ namespace p2p
             const std::string dhcpConfFile = "/home/pi/var/p2p-dnsmasq.conf";
 
 
+        std::string p2p_pin = "12345678";
+        std::string p2p_device_name = "PiPedal";
+        uint32_t wifiChannel = 1; // For UI use only. wifiGroupFrequency is authoritative.
+        bool enabled = false;     // For UI use only. Service state determines whether it's enabled or not for runtime purposes.
         uint32_t  wifiGroupFrequency = 2412; // ch 1 by default. Should be 1, 6, or 11.
         int randomSuffixChars = 2;
         std::string country_code = "CA";
@@ -61,8 +65,6 @@ namespace p2p
         seconds p2pFindRefreshInterval = 600s; 
         seconds refresnP2pFindTime = 10s; 
         bool updateConfig = true;     // update wpa_supplement config files?
-        std::string p2p_pin = "12345678";
-        std::string p2p_device_name = "PiPedal";
         std::string p2p_ssid_postfix = "PiPedalGroup"; 
         std::string p2p_ip_address = "172.24.0.2/16";
         bool p2p_per_sta_psk = false;
