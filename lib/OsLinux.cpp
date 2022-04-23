@@ -284,7 +284,7 @@ void cotask::os::SetFileNonBlocking(int file_fd, bool nonBlocking)
 
 void cotask::os::SetThreadBackgroundPriority()
 {
-    auto ignored = nice(1);
+    (void)nice(1);
 }
 
 namespace cotask::os
