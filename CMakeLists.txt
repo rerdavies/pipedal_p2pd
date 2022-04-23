@@ -13,9 +13,15 @@ enable_testing()
 
 set (CMAKE_CXX_STANDARD 20)
 
+message(STATUS "Compiler version: " CMAKE_CXX_COMPILER_VERSION)
+
+
 if ((CMAKE_CXX_COMPILER_ID STREQUAL GNU) AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
+   message(STATUS "Added -fcourintes flag")
 
    add_compile_options ($<$<COMPILE_LANGUAGE:CXX>:-fcoroutines>)
+else()
+
 endif()
 
 add_compile_options("-Wall" "-Werror" "-pedantic" "-fmax-errors=50")
