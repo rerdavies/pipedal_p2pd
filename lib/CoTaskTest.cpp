@@ -207,6 +207,10 @@ void BackgroundSwitchOnreturnTest()
 /**************************************/
 using namespace std;
 
+
+// GCC 10.2 gives spurious warnings in coroutines.
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable" 
+
 void TestThreadPoolSizing()
 {
     CoDispatcher &dispatcher = CoDispatcher::CurrentDispatcher();

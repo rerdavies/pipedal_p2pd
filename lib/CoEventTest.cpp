@@ -298,6 +298,9 @@ void BlockingQueueTest()
 
 ///////////  ConditionVariableTimeoutTest  ////
 
+// GCC 10.2 gives spurious warnings in coroutines.
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable" 
+
 class CConditionVariableTimeoutTest
 {
 public:
@@ -311,6 +314,8 @@ public:
         CoConditionVariable cv;
 
         cout << "        timeout" << endl;
+        
+        
         bool caught = false;
         try {
             co_await cv.Wait(
