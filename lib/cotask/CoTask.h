@@ -299,7 +299,7 @@ namespace cotask
                     // Returning a coroutine handle here resumes the coroutine it refers to (needed for
                     // continuation handling). If we wanted, we could instead enqueue that coroutine handle
                     // instead of immediately resuming it by enqueuing it and returning void.
-                    std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h)
+                    std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept
                     {
                         auto precursor = h.promise().precursor;
                         if (precursor)
@@ -396,6 +396,7 @@ namespace cotask
             ~promise_type()
             {
             }
+            
             // Keep a coroutine handle referring to the parent coroutine if any. That is, if we
             // co_await a coroutine within another coroutine, this handle will be used to continue
             // working from where we left off.
@@ -433,7 +434,7 @@ namespace cotask
                     // Returning a coroutine handle here resumes the coroutine it refers to (needed for
                     // continuation handling). If we wanted, we could instead enqueue that coroutine handle
                     // instead of immediately resuming it by enqueuing it and returning void.
-                    std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept
+                    std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) const noexcept
                     {
                         auto precursor = h.promise().precursor;
                         if (precursor)
