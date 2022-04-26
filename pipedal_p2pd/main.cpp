@@ -88,25 +88,25 @@ static void printHelp()
     p << "Run under systemd. (Uses systemd logging instead of console logging.\n\n";
 #endif
 
-    p.HangingIndent(" -i, ---wlan-interface=FILE");
+    p.HangingIndent(" -i, ---wlan-interface=<interface_name>");
     p << "wlan interface (default wlan0)\n\n";
 
     p.HangingIndent(" --log-level=debug|info|warning|error");
     p << "Set log level (default info)\n\n";
 
-    p.HangingIndent(" --trace-message");
-    p << "Log all communication with wpa_supplication at info log-level \n\n";
+    p.HangingIndent(" --trace-messages");
+    p << "Log all communication with wpa_supplication at info log-level (debug option)\n\n";
 
     p.Indent(4);
     p.HangingIndent("Remarks:");
 
-    p << "pipedal_p2pd provides session management for Wifi p2p (Wifi Direct) connections when "
+    p << "pipedal_p2pd provides session management and authentication for Wifi P2P (Wifi Direct) connections when "
          "using wpa_supplicant.\n\n";
 
     p.Indent(4);
     p.HangingIndent("Example:");
 
-    p << "pipedal_p2pd_p2pd -c /etc/pipedal_p2pd.conf -i wlan1\n\n";
+    p << "pipedal_p2pd_p2pd -c /etc/pipedal/config/pipedal_p2pd.conf -i wlan0\n\n";
 
     p.Indent(4);
     p.HangingIndent("Configuration file format:");

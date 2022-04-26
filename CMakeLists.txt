@@ -17,7 +17,7 @@ message(STATUS "Compiler version: " CMAKE_CXX_COMPILER_VERSION)
 
 
 if ((CMAKE_CXX_COMPILER_ID STREQUAL GNU) AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
-   message(STATUS "Added -fcourintes flag")
+   message(STATUS "Added -fcoroutines flag")
 
    add_compile_options ($<$<COMPILE_LANGUAGE:CXX>:-fcoroutines>)
 else()
