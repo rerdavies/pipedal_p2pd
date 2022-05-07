@@ -23,12 +23,14 @@
  */
 
 #include "includes/P2pSessionManager.h"
+#include "unistd.h"
 #include "includes/P2pConfiguration.h"
 #include "includes/P2pUtil.h"
 #include "cotask/Log.h"
 #include "ss.h"
 #include <cassert>
 #include "cotask/CoExec.h"
+#include "includes/WifiP2pDnsSdServiceInfo.h"
 
 using namespace p2p;
 using namespace std;
@@ -925,7 +927,8 @@ static std::string MakeUpnpServiceName()
 
 CoTask<> P2pSessionManager::StopServiceDiscovery()
 {
-    co_await RequestOK(SS("P2P_SERVICE_DEL upnp 10 " << MakeUpnpServiceName() << '\n'));
+    // co_await RequestOK(SS("P2P_SERVICE_DEL upnp 10 " << MakeUpnpServiceName() << '\n'));
+    co_await RequestOK("P2P_SERVICE_FLUSH\n"); // reset all outstanding Wi-Fi Direct service announcements.
 }
 
 CoTask<> P2pSessionManager::StartServiceDiscovery()
@@ -934,12 +937,35 @@ CoTask<> P2pSessionManager::StartServiceDiscovery()
 
     // RequestOK("P2P_SERVICE_UPDATE\n");
 
+
+    co_await RequestOK("P2P_SERVICE_FLUSH\n"); // reset all outstanding Wi-Fi Direct service announcements.
+
     if (gP2pConfiguration.service_guid == "")
     {
         gP2pConfiguration.service_guid = os::MakeUuid();
         gP2pConfiguration.Save();
     }
     co_await RequestOK(SS("P2P_SERVICE_ADD upnp 10 " << MakeUpnpServiceName() << '\n'));
+
+
+    std::vector<std::pair<std::string,std::string>> txtRecords {
+        {"id",gP2pConfiguration.service_guid}
+    };
+    char hostname[512];
+    gethostname(hostname,sizeof(hostname)-1);
+    hostname[sizeof(hostname)-1] = '\0';
+
+    WifiP2pDnsSdServiceInfo bonjourServiceInfo {
+        "UniqueName", // xxx fix me!
+        "_pipedal._tcp",
+        txtRecords
+    };
+
+    for (const std::string&query: bonjourServiceInfo.GetQueryList())
+    {
+        this->Log().Info(SS("Wifi DNS-SD query: " << query));
+        co_await RequestOK(SS("P2P_SERVICE_ADD " << query << '\n'));
+    }
 }
 
 CoTask<> P2pSessionManager::Open(const std::string &interfaceName)

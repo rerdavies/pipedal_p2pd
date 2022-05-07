@@ -16,6 +16,8 @@ add_executable(pipedal_p2pd
     P2pUtil.cpp includes/P2pUtil.h
     P2pConfiguration.cpp includes/P2pConfiguration.h
     ss.h
+    includes/WifiP2pDnsSdServiceInfo.h WifiP2pDnsSdServiceInfo.cpp
+    includes/DnsSdTxtRecord.h
     includes/WpaExceptions.h
     WpaChannel.cpp includes/WpaChannel.h
     WpaSupplicant.cpp includes/WpaSupplicant.h
@@ -39,6 +41,14 @@ add_executable(referencetest
 )
 
 add_test(NAME ReferenceTest COMMAND referencetest)
+
+add_executable(dnssdtest
+    WifiP2pDnsSdServiceInfoTest.cpp
+    P2pUtil.cpp includes/P2pUtil.h
+    includes/WifiP2pDnsSdServiceInfo.h WifiP2pDnsSdServiceInfo.cpp
+)
+
+add_test(NAME DnsSdTest COMMAND dnssdtest)
 
 #add_executable(wpaCliTest
 #    WpaCliTest.cpp

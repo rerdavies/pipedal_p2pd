@@ -169,5 +169,16 @@ namespace p2p {
      * @return std::string 
      */
     std::string DecodeString(const std::string&s);
+    std::string toHex(uint8_t byteVal);
+    std::string toHex(uint16_t byteVal);
+    std::string toHex(size_t length, const void*data);
+    std::string toHex(const std::vector<uint8_t> &data);
 
+    bool isValidDnsSdName(const std::string &value);
+    
+    char ansiToLower(char c);
+    char ansiToUpper(char c);
+    std::string ansiToLower(const std::string &value);
+    std::string ansiToUpper(const std::string &value);
+    bool caseInsensitiveCompare(const std::string &left, const std::string&right);
 } // namepace.

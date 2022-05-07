@@ -322,3 +322,120 @@ std::string p2p::DecodeString(const std::string &value)
     }
     return s.str();
 }
+
+
+std::string p2p::toHex(uint8_t byteVal)
+{
+    return toHex(1,&byteVal);
+}
+static char hexChars[] = "0123456789abcdef";
+
+std::string p2p::toHex(uint16_t val)
+{
+    stringstream s;
+    for (int i = sizeof(val)-1; i >= 0; --i)
+    {
+        uint8_t v = (val >> (i*8)) & 0x0FF;
+        s << hexChars[ (v >> 4) & 0x0F];
+        s << hexChars[ (v) & 0x0F];
+    }
+    return s.str();
+}
+
+
+
+
+std::string p2p::toHex(size_t length, const void*pData)
+{
+    const uint8_t *p = (uint8_t*)pData;
+    stringstream s;
+
+    for (size_t i = 0; i < length; ++i)
+    {
+        uint8_t v = p[i];
+        s << hexChars[(v >> 4) & 0x0F];
+        s << hexChars[v & 0x0F];
+    }
+    return s.str();
+}
+
+std::string p2p::toHex(const std::vector<uint8_t> &data)
+{
+    return toHex(data.size(),&(data[0]));
+}
+
+char p2p::ansiToLower(char c)
+{
+    if (c >= 'A' && c <= 'Z')
+    {
+        return (char)(c-'A'+'a');
+    }
+    return c;
+}
+char p2p::ansiToUpper(char c)
+{
+    if (c >= 'a' && c <= 'z')
+    {
+        return (char)(c-'a'+'A');
+    }
+    return c;
+}
+
+std::string p2p::ansiToLower(const std::string &value)
+{
+    stringstream result;
+    for (char c: value)
+    {
+        if (c >= 'A' && c <= 'Z')
+        {
+            c = (char)(c+'a'-'A');
+        }
+        result<< c;
+    }
+    return result.str();
+}
+std::string p2p::ansiToUpper(const std::string &value)
+{
+    stringstream result;
+    for (char c: value)
+    {
+        if (c >= 'a' && c <= 'z')
+        {
+            c = (char)(c+'A'-'a');
+        }
+        result<< c;
+    }
+    return result.str();
+}
+
+bool p2p::caseInsensitiveCompare(const std::string &left, const std::string&right)
+{
+    if (left.length() != right.length()) return false;
+
+    for (size_t i = 0; i < left.length(); ++i)
+    {
+        char cleft = ansiToLower(left.at(i));
+        char cright = ansiToLower(right.at(i));
+        if (cleft != cright) return false;
+    }
+    return true;
+
+}
+
+bool p2p::isValidDnsSdName(const std::string &value)
+{
+    // http://files.dns-sd.org/draft-cheshire-dnsext-dns-sd.txt
+    // < 64 characters, control codes (0x0-0x1F and 0x7F) are illegal, otherwise any valid (pre-composed) UTF-8 name.
+    // Additionally, the rfc specifies optional(!) \-encoding for '."", so we will disallow '.' and '\'.
+    if (value.length() >= 63) return false;
+    for (char c: value)
+    {
+        uint8_t b = (uint8_t)c;
+        if (b <= 0x1F) return false;
+        if (b == 0x7F) return false;
+        if (c == '.') return false;
+        if (c == '\\') return false;
+    }
+    return true;
+
+}
