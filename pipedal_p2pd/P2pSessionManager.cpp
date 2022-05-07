@@ -951,6 +951,9 @@ CoTask<> P2pSessionManager::StartServiceDiscovery()
     std::vector<std::pair<std::string,std::string>> txtRecords {
         {"id",gP2pConfiguration.service_guid}
     };
+#ifdef JUNK
+    // not signficiantly better than upnp.
+    // TXT records don't work.
     char hostname[512];
     gethostname(hostname,sizeof(hostname)-1);
     hostname[sizeof(hostname)-1] = '\0';
@@ -966,6 +969,7 @@ CoTask<> P2pSessionManager::StartServiceDiscovery()
         this->Log().Info(SS("Wifi DNS-SD query: " << query));
         co_await RequestOK(SS("P2P_SERVICE_ADD " << query << '\n'));
     }
+#endif
 }
 
 CoTask<> P2pSessionManager::Open(const std::string &interfaceName)
