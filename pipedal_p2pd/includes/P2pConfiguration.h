@@ -66,7 +66,7 @@ namespace p2p
         seconds refresnP2pFindTime = 10s; 
         bool updateConfig = true;     // update wpa_supplement config files?
         std::string p2p_ssid_postfix = "PiPedalGroup"; 
-        std::string p2p_ip_address = "172.24.0.2/16";
+        std::string p2p_ip_address = "172.23.0.2/16";
         bool p2p_per_sta_psk = false;
         int p2p_go_intent = 15;
         bool p2p_go_ht40 = false;

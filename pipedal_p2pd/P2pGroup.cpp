@@ -267,7 +267,7 @@ CoTask<> P2pGroup::OnEvent(const WpaEvent &event)
             break;
         case WpaEventMessage::WPA_EVENT_EAP_FAILURE2:
         case WpaEventMessage::WPA_EVENT_EAP_FAILURE:
-            Log().Debug(SS("EAP failure. " << event.ToString()));
+            Log().Info(SS("EAP failure. " << event.ToString()));
             break;
         case WpaEventMessage::AP_STA_CONNECTED:
             Log().Info(SS("Station connected. " << event.getParameter(0)));
@@ -279,7 +279,10 @@ CoTask<> P2pGroup::OnEvent(const WpaEvent &event)
             break;
 
         default:
-            Log().Debug(SS("Unhandled event: " << event.ToString()));
+            if (TraceMessages())
+            {
+                Log().Debug(SS("Unhandled event: " << event.ToString()));
+            }
             break;
         }
     }

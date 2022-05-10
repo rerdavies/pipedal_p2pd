@@ -23,6 +23,7 @@
  */
 
 #include "includes/WpaSupplicant.h"
+#include "ss.h"
 #include "cotask/Os.h"
 #include "cotask/CoEvent.h"
 #include "cotask/CoExceptions.h"
@@ -47,7 +48,30 @@ CoTask<> WpaSupplicant::Open(const std::string&interfaceName)
     try
     {
         this->interfaceName = interfaceName;
-        co_await OpenChannel(interfaceName,true);
+
+        for (int retries = 0; /**/; ++retries)
+        {
+            try {
+                co_await OpenChannel(interfaceName,true);
+                break;
+            }
+            catch (const std::exception &e)
+            {
+                if (retries == 0)
+                {
+                    Log().Info(SS("Failed to connect to interface " + interfaceName + ". Retrying ... (" << (retries+1) << " of 10)"));
+                } else 
+                {
+                    if (retries == 10)
+                    {
+                        throw;
+                    }
+                }
+            }
+            co_await CoDelay(5000ms);
+        }
+        Log().Info("Connected to " +interfaceName);
+
         open = true;
 
         CoDispatcher::CurrentDispatcher().StartThread(KeepAliveProc());
