@@ -72,6 +72,8 @@ CoTask<> WpaSupplicant::Open(const std::string&interfaceName)
         }
         Log().Info("Connected to " +interfaceName);
 
+            co_await CoDelay(3000ms);
+
         open = true;
 
         CoDispatcher::CurrentDispatcher().StartThread(KeepAliveProc());

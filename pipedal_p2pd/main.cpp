@@ -309,8 +309,6 @@ CoTask<int> CoMain(int argc, const char *const *argv)
         P2pSessionManager sessionManager;
         sessionManager.SetLog(log);
         sessionManager.TraceMessages(traceMessages);
-        co_await sessionManager.Open(interfaceOption);
-
 #ifdef __linux__
         if (systemd)
         {
@@ -319,6 +317,9 @@ CoTask<int> CoMain(int argc, const char *const *argv)
                         (unsigned long)getpid());
         }
 #endif
+
+        co_await sessionManager.Open(interfaceOption);
+
         while (shutdown_flag && !sessionManager.IsFinished())
         {
             co_await CoDelay(300ms);
