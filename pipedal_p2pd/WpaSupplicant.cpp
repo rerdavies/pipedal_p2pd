@@ -92,7 +92,9 @@ CoTask<> WpaSupplicant::Close() {
     if (open)
     {
         open = false;
+        Log().Error(SS("Uninitializing..."));
         co_await CoOnUnInit();
+        Log().Error(SS("Closing wpa_supplicant channel..."));
         CloseChannel();
     }
 }

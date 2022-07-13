@@ -6,16 +6,17 @@ set(WPA_CTRL_PATH ../..//wpa_supplicant-2.10/src)
 
 add_executable(pipedal_p2pd 
     main.cpp
-
-    static_vector.h
+    RestartCounter.h
+    autoptr_vector.h
     WpaCtrl.cpp includes/WpaCtrl.h
-    DeviceIdFile.cpp DeviceIdFile.hpp
+    ServiceConfiguration.cpp ServiceConfiguration.hpp
 
     WpaEvent.cpp includes/WpaEvent.h
     WpaMessages.cpp includes/WpaMessages.h
     P2pUtil.cpp includes/P2pUtil.h
     P2pConfiguration.cpp includes/P2pConfiguration.h
     ss.h
+    ConfigSerializer.h ConfigSerializer.cpp
     includes/WifiP2pDnsSdServiceInfo.h WifiP2pDnsSdServiceInfo.cpp
     includes/DnsSdTxtRecord.h
     includes/WpaExceptions.h
@@ -31,8 +32,6 @@ target_compile_definitions(pipedal_p2pd PRIVATE CONFIG_CTRL_IFACE CONFIG_CTRL_IF
 target_link_libraries(pipedal_p2pd cotask uuid systemd )
 target_include_directories(pipedal_p2pd PRIVATE
      "../lib"
-     ${WPA_CTRL_PATH}/common
-     ${WPA_CTRL_PATH}/utils
      .
      )
 

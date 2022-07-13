@@ -143,32 +143,6 @@ namespace p2p {
         return detail::FinalAction<F>(f); 
     }
 
-    /**
-     * @brief Convert string to config file format.
-     * 
-     * Adds quotes and escapes, but only if neccessary. 
-     * 
-     * Source text is assumed to be UTF-8. Escapes for the
-     * following values only: \r \n \t \" \\.
-     * 
-     * 
-     * @param s 
-     * @return std::string Encoded string.
-     */
-    std::string EncodeString(const std::string&s);
-
-    /**
-     * @brief Config file format to string.
-     * 
-     * Decodes quotes and escapes, but only if neccessary. 
-     * 
-     * Source text is assumed to be UTF-8. Escapes for the
-     * following values only: \r \n \t \" \\.
-     * 
-     * @param s 
-     * @return std::string 
-     */
-    std::string DecodeString(const std::string&s);
     std::string toHex(uint8_t byteVal);
     std::string toHex(uint16_t byteVal);
     std::string toHex(size_t length, const void*data);

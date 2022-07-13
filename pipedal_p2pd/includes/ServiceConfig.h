@@ -22,20 +22,21 @@
  * SOFTWARE.
  */
 
-#pragma once
-
 #include <string>
 
-namespace pipedal {
-    class DeviceIdFile {
-    public:
-        static const char DEVICEID_FILE_NAME[];
-
-        void Load();
-        void Save();
 
 
-        std::string uuid;
-        std::string deviceName;
-    };
-}
+class ServiceConfig {
+public:
+
+
+    std::string uuid;
+    std::string service_name = "PiPedal";
+    uint32_t port_number = 80;
+
+    void Load();
+    void Save();
+
+    static std::string MakeUuid()
+
+};

@@ -28,10 +28,12 @@
 #include <chrono>
 #include <string>
 #include <filesystem>
+#include "ConfigSerializer.h"
 namespace p2p
 {
     using namespace std;
     using seconds = chrono::seconds;
+    using namespace config_serializer;
     // enum class SelectTimeoutSecs
     // {
     //     Normal = 10,   // p2p find refreshes
@@ -46,7 +48,12 @@ namespace p2p
         bool dummy;
     };
     // Potential future configuration options.
-    struct P2pConfiguration {
+    struct P2pConfiguration: public ConfigSerializable<P2pConfiguration> {
+
+        using base = ConfigSerializable<P2pConfiguration>;
+
+        P2pConfiguration();
+
         bool runDnsMasq=false;
             const std::string dhcpLeaseFilePath = "/home/pi/var/dnsmasq_leases.db";
             const std::string dhcpConfFile = "/home/pi/var/p2p-dnsmasq.conf";
@@ -87,15 +94,15 @@ namespace p2p
         std::string service_guid_file = "";
         std::string service_guid = "0a6045b0-1753-4104-b3e4-b9713b9cc356";
         P2pGroupConfiguration defaultGroupConfiguration;
+        uint16_t server_port =  80; // used for service broadcasts.
 
 
 
         std::filesystem::path path;
         // returns true if a write of the config file is required.
         bool  MakeUuid();
-        void Save(std::ostream &f);
-        void Save(const std::filesystem::path &path);
-        void Save() { Save(path); }
+        virtual void Save(std::ostream &f);
+        void Save() { base::Save(path); }
         void Load(const std::filesystem::path &path);
 
     };

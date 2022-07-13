@@ -22,41 +22,28 @@
  * SOFTWARE.
  */
 
-#pragma once 
+#pragma once
 
+#include <string>
+#include "ConfigSerializer.h"
 
+namespace pipedal {
+    using namespace config_serializer;
 
-namespace p2p {
-
-    template <typename T> class static_vector
-    {
-        std::vector<T*> v;
-    private:
-        // no copy no move.
-        static_vector(const static_vector<T> &) = delete;
-        static_vector(static_vector<T> && ) = delete;
+    class ServiceConfiguration: protected ConfigSerializable<ServiceConfiguration> {
     public:
-        using iterator = std::vector<T*>::const_iterator;
+        using base = ConfigSerializable<ServiceConfiguration>;
 
-        static_vector() { }
-        static_vector(std::initializer_list<T*> l)
-        :v(l)
-        {
+        ServiceConfiguration();
 
-        }
-        ~static_vector() {
-            for (T *i: v)
-            {
-                delete i;
-            }
-        }
-        void push_back(T*value) { v.push_back(value);}
+        static const char DEVICEID_FILE_NAME[];
 
-        iterator begin() const { return v.begin(); }
-        iterator end() const { return v.end(); }
+        void Load();
+        void Save();
 
-        T*operator[](size_t index) const { return v[index]; }
 
-        size_t size() const { return v.size(); }
+        std::string uuid;
+        std::string deviceName = "PiPedal";
+        uint32_t server_port = 80;
     };
 }

@@ -81,7 +81,11 @@ using namespace p2p::detail;
 using namespace p2p;
 using namespace p2p::detail;
 
-const std::chrono::milliseconds DEFAULT_TIMEOUT = 600000ms;
+#ifdef DEBUG
+    const std::chrono::milliseconds DEFAULT_TIMEOUT = 600000ms;
+#else
+    const std::chrono::milliseconds DEFAULT_TIMEOUT = 15000ms;
+#endif
 namespace p2p::detail
 {
 

@@ -548,6 +548,9 @@ CoTask<> P2pSessionManager::SetUpPersistentGroup()
             std::string he = config.p2p_go_he ? " he" : "";
 
             co_await SetWpaProperty("p2p_go_intent", WpaEvent::ToIntLiteral(config.p2p_go_intent));
+
+            Log().Info(SS("Creating persistent P2p Group."));
+
             if (this->networkId != -1)
             {
                 co_await RequestOK(SS("P2P_GROUP_ADD persistent=" << networkId << " freq=" << config.wifiGroupFrequency << ht40 << vht << he << "\n"));
@@ -673,8 +676,9 @@ CoTask<> P2pSessionManager::OnGroupStarted(
     std::string desiredInterface = "p2p-" + gP2pConfiguration.wlanInterface + "-0";
     if (groupInfo.interface != desiredInterface)
     {
+        gotWrongInterface = true;
         Log().Error("Unexpected interface added. (Expecting "+ desiredInterface+ "; got " + groupInfo.interface+ ")");
-        co_return;
+         co_return;
     }
     // this->activeGroup = std::make_unique<P2pGroupInfo>(event);
     co_await CreateP2pGroup(groupInfo.interface);
@@ -916,19 +920,26 @@ CoTask<> P2pSessionManager::ScanProc()
     {
         // we arrive here normally during shutdown.
         // but if there are other issues, here is not the place ot deal with them.
-        Log().Debug(SS("Listen thread terminated." << e.what()));
+        Log().Debug(SS("Listen thread terminated. " << e.what()));
     }
 }
 
 static std::string MakeUpnpServiceName()
 {
-    return SS("uuid:" << gP2pConfiguration.service_guid << "::urn:schemas-twoplay-com:service:PiPedal:1");
+    return SS("uuid:" << gP2pConfiguration.service_guid << "::urn:schemas-twoplay-com:service:PiPedal:1" 
+    << "::port:" << gP2pConfiguration.server_port
+        );
 }
 
 CoTask<> P2pSessionManager::StopServiceDiscovery()
 {
-    // co_await RequestOK(SS("P2P_SERVICE_DEL upnp 10 " << MakeUpnpServiceName() << '\n'));
-    co_await RequestOK("P2P_SERVICE_FLUSH\n"); // reset all outstanding Wi-Fi Direct service announcements.
+    try {
+        // co_await RequestOK(SS("P2P_SERVICE_DEL upnp 10 " << MakeUpnpServiceName() << '\n'));
+        co_await RequestOK("P2P_SERVICE_FLUSH\n"); // reset all outstanding Wi-Fi Direct service announcements.
+    } catch (const std::exception&)
+    {
+
+    }
 }
 
 CoTask<> P2pSessionManager::StartServiceDiscovery()

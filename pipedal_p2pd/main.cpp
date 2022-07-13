@@ -1,18 +1,18 @@
 /*
  * MIT License
- * 
+ *
  * Copyright (c) 2022 Robin E. R. Davies
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
  * the Software without restriction, including without limitation the rights to
  * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
  * of the Software, and to permit persons to whom the Software is furnished to do
  * so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,11 +22,10 @@
  * SOFTWARE.
  */
 
-
-
 #include "cotask/CoTask.h"
 #include "includes/P2pSessionManager.h"
 #include "CommandLineParser.h"
+#include "ss.h"
 #include <exception>
 #include <iostream>
 #include <string>
@@ -34,12 +33,14 @@
 #include <signal.h>
 #include <unistd.h>
 #include <memory.h>
+#include <memory>
 #include "ss.h"
 #include "includes/PrettyPrinter.h"
 #include "includes/P2pConfiguration.h"
 #if __linux__
 #include <systemd/sd-daemon.h>
 #endif
+#include "RestartCounter.h"
 
 using namespace p2p;
 using namespace cotask;
@@ -48,6 +49,12 @@ using namespace twoplay;
 
 volatile sig_atomic_t shutdown_flag = 1;
 volatile sig_atomic_t signal_abort = 1;
+volatile sig_atomic_t sighup_flag = 1;
+
+void onSigHup(int signal)
+{
+    sighup_flag = 0;
+}
 
 void onSigInt(int signal)
 {
@@ -64,6 +71,8 @@ void onSigInt(int signal)
         perror(msg);        \
         exit(EXIT_FAILURE); \
     } while (0)
+
+static RestartCounter restartCounter("pipedal_p2pd");
 
 static void printHelp()
 {
@@ -140,76 +149,102 @@ static void printHelp()
     p << "For optimal search times, should almost always be a social channel: 2412 (ch1),2437 (ch6), or 2462 (ch11).\n\n";
 
     p.HangingIndent("\t"
-           "p2p_model_name=\"string\"");
+                    "p2p_model_name=\"string\"");
     p << "Model name (used in P2P connection negotiations). Can be empty.\n\n";
 
     p.HangingIndent("\t"
-           "p2p_model_number=\"string\"");
+                    "p2p_model_number=\"string\"");
     p << "Model number (used in P2P connection negotiations). Can be empty.\n\n";
 
     p.HangingIndent("\t"
-           "p2p_manufacturer=\"string\"");
+                    "p2p_manufacturer=\"string\"");
     p << "Manufacturer name (used in P2P connection negotiations). Can be empty.\n\n";
 
     p.HangingIndent("\t"
-           "p2p_serial_number=\"string\"");
+                    "p2p_serial_number=\"string\"");
     p << "Device serial number (used in P2P connection negotiations). Can be empty.\n\n";
 
     p.HangingIndent("\t"
-           "p2p_device_type=string");
+                    "p2p_device_type=string");
     p << "P2p device type (used in P2P connection negotiations). Must not be empty. e.g.: 1-0050F204-1\n\n";
 
     p.HangingIndent("\t"
-           "wlanInterface=string");
+                    "wlanInterface=string");
     p << "Name of the wlan device interface. (Default=wlan0)\n\n";
 
     p.HangingIndent("\t"
-           "p2pInterface=string");
+                    "p2pInterface=string");
     p << "Name of the p2p device interface. (Default=p2p-dev-wlan0)\n\n";
 
     p.HangingIndent("\t"
-           "p2p_go_ht40=true|false");
+                    "p2p_go_ht40=true|false");
     p << "Whether to enable ht40 Wifi connections on the group WiFichannel.\n\n";
 
     p.HangingIndent("\t"
-           "p2p_go_vht=true|false");
+                    "p2p_go_vht=true|false");
     p << "Whether to enable vht Wifi connections on the group WiFichannel.\n\n";
 
     p.HangingIndent("\t"
-           "p2p_go_he=true|false");
+                    "p2p_go_he=true|false");
     p << "Whether to enable vht Wifi connections on the group WiFichannel.\n\n";
 
     p.HangingIndent("\t"
-           "p2p_ip_address=n.n.n.n/nn");
+                    "p2p_ip_address=n.n.n.n/nn");
     p << "IPv4 address to use on the group channel. e.g. 172.24.0.2/16\n\n";
 
     p.HangingIndent("\t"
-           "service_guid_file=FILENAME");
+                    "service_guid_file=FILENAME");
     p << "Name of a file containing the device-specific GUID used to indentify the current device. File syntax: Syntax: 0a6045b0-1753-4104-b3e4-b9713b9cc356\\n\n\n";
     p << "Usually, this will match an avahi DNS-SD service TXT record used to find services on the device once connected. "
          "pipedal_p2pd does not publish a DNS-SD service record.\n\n";
 
     p.HangingIndent("\t"
-           "service_guid=UUID");
+                    "service_guid=UUID");
     p << "Device identifier to use if service_guid_file was not specified. Syntax: 0a6045b0-1753-4104-b3e4-b9713b9cc356\n\n";
 }
 
-static bool  LoadConfig(const std::string&configFile)
+static bool LoadConfig(const std::string &configFile)
 {
-    auto& config = gP2pConfiguration;
+    auto &config = gP2pConfiguration;
 
-    try {
+    try
+    {
         config.Load(configFile);
-    } catch (const std::exception & e)
+    }
+    catch (const std::exception &e)
     {
         cout << "Error: Failed to load config file. " << e.what() << endl;
         return false;
     }
     return true;
 }
-static void PrintConfig() {
-    auto& config = gP2pConfiguration;
+static void PrintConfig()
+{
+    auto &config = gP2pConfiguration;
     config.Save(cout);
+}
+
+static int silentSysExec(const char *szCommand)
+{
+    std::stringstream s;
+    s << szCommand << " 2>&1";
+
+    FILE *output = popen(s.str().c_str(), "r");
+    char buffer[512];
+    if (output)
+    {
+        while (!feof(output))
+        {
+            fgets(buffer, sizeof(buffer), output);
+        }
+        return pclose(output);
+    }
+    return -1;
+}
+static void RestartDhcpcd()
+{
+
+    silentSysExec("systemctl restart dhcpcd");
 }
 
 CoTask<int> CoMain(int argc, const char *const *argv)
@@ -276,8 +311,9 @@ CoTask<int> CoMain(int argc, const char *const *argv)
     if (systemd)
     {
         log = std::make_shared<SystemdLog>();
-
-    } else {
+    }
+    else
+    {
         log = std::make_shared<ConsoleLog>();
     }
 
@@ -302,50 +338,111 @@ CoTask<int> CoMain(int argc, const char *const *argv)
         throw invalid_argument("Invalid -log option. Expection debug, info, warning or error.");
     }
 
+    bool hadWrongInterface = false;
     try
     {
         AsyncIo::GetInstance().Start();
 
-        P2pSessionManager sessionManager;
-        sessionManager.SetLog(log);
-        sessionManager.TraceMessages(traceMessages);
 #ifdef __linux__
         if (systemd)
         {
             sd_notifyf(0, "READY=1\n"
-                        "MAINPID=%lu",
-                        (unsigned long)getpid());
+                          "MAINPID=%lu",
+                       (unsigned long)getpid());
         }
 #endif
-
-        co_await sessionManager.Open(interfaceOption);
-
-        while (shutdown_flag && !sessionManager.IsFinished())
+        if (shutdown_flag)
         {
-            co_await CoDelay(300ms);
-        }
+            sighup_flag = 1; // sighup is used for an in-process restart (testing purposes)
+            std::unique_ptr<P2pSessionManager> sessionManager = std::make_unique<P2pSessionManager>();
+
+            sessionManager->SetLog(log);
+            sessionManager->TraceMessages(traceMessages);
+
+            // the whole network stack is racy.
+            // wait for it to settle before we try setting up a connection.
+            co_await CoDelay(3000ms);
+
+            log->Info("Opening session.");
+            try {
+                co_await sessionManager->Open(interfaceOption);
+            } catch (const std::exception &e)
+            {
+                log->Info(SS("Terminated prematurely. "  << sessionManager->GotWrongInterface()));
+                hadWrongInterface = sessionManager->GotWrongInterface();
+                throw;
+            }
+
+            while (sighup_flag && shutdown_flag && !sessionManager->IsFinished())
+            {
+                co_await CoDelay(300ms);
+            }
+
+            hadWrongInterface = sessionManager->GotWrongInterface();
 
 #ifdef __linux__
-        if (systemd)
-        {
-            sd_notify(0, "STOPPING=1");
-        }
+            if (systemd && !shutdown_flag)
+            {
+                sd_notify(0, "STOPPING=1");
+            }
 #endif
+            log->Info("Shutting down...");
 
-        log->Info("Shutting down...");
-        // orderly shutdown.
-        co_await sessionManager.Close();
+            // orderly shutdown.
+            try
+            {
+                co_await sessionManager->Close();
+            }
+            catch (const std::exception &e)
+            {
+                log->Info(SS("Session Close failed. " << e.what()));
+            }
+
+            Dispatcher().PumpMessages(300ms);
+
+            // // if we got p2p-wlan0-1 instead of p2p-wlan0-0, restart the dhcpcd service.
+            // // do this once only, because it could potentially crash a reboot.
+            // if (sessionManager->GotWrongInterface() && shutdown_flag)
+            // {
+            //     if (!hasRestartedDhcpcd)
+            //     {
+            //         hasRestartedDhcpcd = true;
+
+            //         if (systemd)
+            //         {
+            //             log->Warning("Restarting dhcpcd.");
+            //             RestartDhcpcd();
+            //         }
+            //     }
+            // }
+        }
     }
     catch (const std::exception &e)
     {
 #ifdef __linux__
-    if (systemd)
-    {
-        sd_notifyf(0,"STATUS=Unexpected error: %s",e.what());
-    }
+        if (systemd)
+        {
+            sd_notifyf(0, "STATUS=Unexpected error: %s", e.what());
+        }
 #endif
         log->Error(SS("Terminating abnormally. " << e.what()));
     }
+
+    log->Info(SS("Restarting dhcpcd " << systemd << " " << hadWrongInterface));
+    if (systemd)
+    {
+        if (hadWrongInterface)
+        {
+            if (restartCounter.Count() <= 3)
+            {
+                log->Info("Restarting dhcpcd");
+                RestartDhcpcd();
+            }
+        }
+        restartCounter.Increment();
+        exit(EXIT_FAILURE); // nice clean up is hard. :-(
+    }
+
     log->Info("Shutdown complete.");
     Dispatcher().PostQuit();
 
@@ -358,10 +455,13 @@ int main(int argc, const char **argv)
     // signals have to be established before CoDispatcher thread pool is established!
     signal(SIGTERM, onSigInt);
     signal(SIGINT, onSigInt);
+    signal(SIGHUP, onSigHup);
 
     int retVal = CoMain(argc, argv).GetResult();
 
     AsyncIo::GetInstance().Stop();
 
+    if (!shutdown_flag) return 0;
+    
     return retVal;
 }

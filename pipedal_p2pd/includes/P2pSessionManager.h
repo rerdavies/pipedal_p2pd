@@ -103,8 +103,11 @@ namespace p2p
         CoTask<> OnGroupStarted(const P2pGroupInfo &groupInfo);
         CoTask<> OnGroupRemoved(const WpaEvent&event);
         CoTask<> SetP2pProperty(const std::string &name, const std::string &value);
-
+    public:
+        bool GotWrongInterface() const { return gotWrongInterface; }
     private:
+
+        bool gotWrongInterface = false;
         CoTask<> CleanUpNetworks();
         CoTask<> CloseGroup(P2pGroup *group);
         CoTask<> EndEnrollment();

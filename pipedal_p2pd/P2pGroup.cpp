@@ -102,7 +102,7 @@ P2pGroupInfo::P2pGroupInfo(const WpaEvent &event)
 
 void P2pGroup::DebugHook()
 {
-    Log().Debug("Ping.");
+    //Log().Debug("Ping.");
 }
 
 CoTask<> P2pGroup::PingProc()
@@ -270,14 +270,17 @@ CoTask<> P2pGroup::OnEvent(const WpaEvent &event)
             Log().Info(SS("EAP failure. " << event.ToString()));
             break;
         case WpaEventMessage::AP_STA_CONNECTED:
-            Log().Info(SS("Station connected. " << event.getParameter(0)));
+            // Better handled in the Group message handlers, where we know the device name.
+            //Log().Info(SS("Station connected. " << event.getParameter(0)));
             this->currentEnrollee = "";
             break;
         case WpaEventMessage::AP_STA_DISCONNECTED:
-            Log().Info(SS("Station disconnected. " << event.getParameter(0)));
+            //Log().Info(SS("Station disconnected. " << event.getParameter(0)));
             this->currentEnrollee = "";
             break;
-
+        case WpaEventMessage::WPA_EVENT_BSS_ADDED:
+            // not interesting.
+            break;
         default:
             if (TraceMessages())
             {
