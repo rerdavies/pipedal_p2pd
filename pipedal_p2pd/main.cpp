@@ -235,7 +235,8 @@ static int silentSysExec(const char *szCommand)
     {
         while (!feof(output))
         {
-            fgets(buffer, sizeof(buffer), output);
+            auto t = fgets(buffer, sizeof(buffer), output);
+            if (t == nullptr) break;
         }
         return pclose(output);
     }
